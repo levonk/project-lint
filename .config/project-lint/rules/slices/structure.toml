@@ -1,0 +1,87 @@
+# Project organization and directory structure rules
+# Handles directory layout, file placement, and project organization
+
+[metadata]
+name = "structure-slice"
+version = "1.0.0"
+scope = "project-structure"
+updated = "2025-08-04"
+description = "Project organization and directory structure rules"
+
+[directory_structure]
+# Expected directory structure
+required_dirs = ["src/", "tests/", "docs/"]
+optional_dirs = ["assets/", "scripts/", "config/", "tools/"]
+forbidden_dirs = ["temp/", "tmp/", "cache/", "build/", "dist/"]
+
+[file_placement]
+# File placement rules
+source_files_in_src = true
+test_files_in_tests = true
+docs_in_docs = true
+scripts_in_bin = true
+config_in_config = true
+
+[organization_patterns]
+# Organization patterns for different project types
+rust_project = {
+    required = ["src/", "Cargo.toml", "Cargo.lock"],
+    optional = ["tests/", "examples/", "benches/", "docs/"],
+    forbidden = ["target/"]
+}
+
+python_project = {
+    required = ["src/", "requirements.txt"],
+    optional = ["tests/", "docs/", "scripts/", "setup.py"],
+    forbidden = ["__pycache__/", "*.pyc"]
+}
+
+node_project = {
+    required = ["package.json"],
+    optional = ["src/", "tests/", "docs/", "scripts/"],
+    forbidden = ["node_modules/", "dist/", "build/"]
+}
+
+web_project = {
+    required = ["public/", "src/"],
+    optional = ["assets/", "components/", "pages/", "styles/"],
+    forbidden = ["node_modules/", "dist/", "build/"]
+}
+
+[file_naming]
+# File naming conventions
+use_snake_case = ["*.py", "*.rs", "*.js", "*.ts"]
+use_kebab_case = ["*.html", "*.css", "*.md"]
+use_pascal_case = ["*.java", "*.cs"]
+use_camel_case = ["*.js", "*.ts"]
+
+[directory_naming]
+# Directory naming conventions
+directories_use_snake_case = true
+directories_use_kebab_case = false
+forbid_spaces_in_names = true
+forbid_uppercase_in_names = true
+
+[special_files]
+# Special file handling
+readme_required = true
+license_required = true
+gitignore_required = true
+changelog_optional = true
+contributing_optional = true
+
+[file_size_limits]
+# File size limits
+max_source_file_kb = 1000
+max_config_file_kb = 100
+max_doc_file_kb = 500
+warn_large_files = true
+
+[messages]
+missing_required_dir = "📁 Required directory '{dir}' is missing"
+forbidden_dir_detected = "🚫 Forbidden directory '{dir}' detected"
+file_in_wrong_location = "📁 File '{file}' should be in '{target_dir}'"
+wrong_naming_convention = "📝 File '{file}' doesn't follow naming convention"
+missing_readme = "📖 README file is required"
+missing_license = "⚖️  LICENSE file is required"
+large_file_detected = "📦 Large file detected: {file} ({size}KB)" 

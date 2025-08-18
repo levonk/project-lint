@@ -1,0 +1,41 @@
+# Custom Rules
+# This rule file contains project-specific custom rules
+
+name = "custom-rules"
+description = "Project-specific custom linting rules"
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "no_debug_prints"
+pattern = "*.rs"
+message = "Remove debug println! statements before committing"
+severity = "warning"
+check_content = true
+content_pattern = "println!"
+
+[[rules]]
+name = "require_cargo_toml"
+pattern = "Cargo.toml"
+message = "Cargo.toml is required for Rust projects"
+severity = "error"
+required = true
+
+[[rules]]
+name = "no_tmp_files"
+pattern = "*.tmp"
+message = "Temporary files should not be committed"
+severity = "error"
+
+[[rules]]
+name = "require_readme"
+pattern = "README.md"
+message = "README.md is required for documentation"
+severity = "warning"
+required = true
+
+[[rules]]
+name = "no_debug_files"
+pattern = "debug.*"
+message = "Debug files should not be committed"
+severity = "warning" 

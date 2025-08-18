@@ -1,0 +1,59 @@
+# Web Development Profile
+# Activated when working with web projects
+
+[metadata]
+name = "web-profile"
+version = "1.0.0"
+scope = "web-development"
+updated = "2025-08-04"
+description = "Profile for web development projects"
+
+[activation]
+# Paths that trigger this profile
+paths = ["src/web/", "public/", "assets/", "static/", "dist/", "build/"]
+# File extensions that trigger this profile
+extensions = ["html", "css", "js", "ts", "jsx", "tsx", "vue", "svelte"]
+# Git branch patterns that activate this profile
+branches = ["feature/web-*", "web-*", "frontend-*"]
+# Project files that indicate web development
+indicators = ["package.json", "webpack.config.js", "vite.config.js", "next.config.js"]
+
+[enable]
+# Rule domains to enable for web projects
+domains = ["structure", "extensions", "format", "security", "performance"]
+# Plugins to enable for web projects
+plugins = ["ai-nudge", "format-checker", "bundle-analyzer"]
+
+[web_specific]
+# Web-specific settings
+check_html_semantics = true
+validate_css_properties = true
+lint_javascript = true
+check_accessibility = true
+optimize_images = true
+check_seo_meta = true
+
+[structure]
+# Web-specific directory structure
+expected_dirs = ["src/", "public/", "assets/", "components/", "pages/"]
+forbidden_dirs = ["node_modules/", ".cache/", "dist/", "build/"]
+
+[extensions]
+# Web file extensions and their proper locations
+"*.html" = "public/"
+"*.css" = "src/styles/"
+"*.scss" = "src/styles/"
+"*.sass" = "src/styles/"
+"*.js" = "src/"
+"*.ts" = "src/"
+"*.jsx" = "src/components/"
+"*.tsx" = "src/components/"
+"*.vue" = "src/components/"
+"*.svelte" = "src/components/"
+"*.json" = "src/config/"
+"*.svg" = "public/icons/"
+"*.png" = "public/images/"
+"*.jpg" = "public/images/"
+"*.jpeg" = "public/images/"
+"*.gif" = "public/images/"
+"*.webp" = "public/images/" 

@@ -1,0 +1,21 @@
+# Script Location Rules
+# This rule file ensures scripts are in the correct directory
+
+name = "script-location"
+description = "Ensure scripts are placed in the correct directory structure"
+enabled = true
+severity = "warning"
+
+[scripts]
+preferred_directory = "bin"
+alternative_directories = ["scripts/", "tools/", "bin/"]
+script_extensions = [".sh", ".py", ".js", ".ts", ".rb", ".pl", ".php"]
+
+[conditions]
+# Check for scripts in wrong locations
+check_root_scripts = true
+check_scripts_in_src = true
+
+[messages]
+script_in_wrong_location = "📜 Script '{file}' should be in '{preferred_dir}' directory"
+scripts_dir_created = "⚠️  'scripts/' directory created but project uses '{preferred_dir}'" 

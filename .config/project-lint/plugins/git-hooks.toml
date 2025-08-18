@@ -1,0 +1,65 @@
+# Git Hooks Plugin
+# Integrates with git hooks for automated linting
+
+[metadata]
+name = "git-hooks-plugin"
+version = "1.0.0"
+scope = "git-integration"
+updated = "2025-08-04"
+description = "Git hooks integration for automated linting"
+
+[trigger]
+# Trigger conditions
+on = ["git:pre-commit", "git:pre-push", "git:commit-msg"]
+
+[execute]
+# Execution logic
+command = "lint-all"
+condition = "branch != 'main' && has_unstaged_changes"
+timeout_seconds = 30
+fail_on_errors = true
+
+[pre_commit]
+# Pre-commit hook configuration
+enabled = true
+check_staged_files = true
+check_unstaged_files = false
+auto_fix = false
+block_on_errors = true
+
+[pre_push]
+# Pre-push hook configuration
+enabled = true
+check_all_files = true
+check_remote_diff = true
+block_on_errors = true
+
+[commit_msg]
+# Commit message hook configuration
+enabled = true
+check_format = true
+require_ticket = false
+max_length = 72
+
+[conditions]
+# Conditional execution
+branch_not_main = "branch != 'main'"
+has_unstaged_changes = "git_status_has_unstaged()"
+has_staged_changes = "git_status_has_staged()"
+is_feature_branch = "branch matches 'feature/*'"
+is_hotfix_branch = "branch matches 'hotfix/*'"
+
+[actions]
+# Available actions
+lint_staged = "lint --path . --staged-only"
+lint_all = "lint --path ."
+fix_staged = "lint --path . --staged-only --fix"
+check_format = "format-check --path ."
+
+[messages]
+hook_triggered = "🔗 Git hook triggered: {hook}"
+checking_staged = "📋 Checking staged files..."
+checking_all = "📋 Checking all files..."
+blocking_commit = "🚫 Commit blocked due to linting errors"
+blocking_push = "🚫 Push blocked due to linting errors"
+hook_success = "✅ Git hook completed successfully" 

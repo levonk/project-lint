@@ -1,0 +1,39 @@
+# Project-specific configuration for project-lint
+# This file takes precedence over global configuration
+
+[git]
+warn_wrong_branch = true
+allowed_branches = ["main", "master", "feature/*", "fix/*"]
+forbidden_branches = ["develop", "staging", "wip/*"]
+
+[files]
+auto_move = true
+type_mappings = { 
+    "*.sh" = "bin/", 
+    "*.py" = "scripts/", 
+    "*.js" = "scripts/", 
+    "*.ts" = "scripts/",
+    "*.md" = "docs/",
+    "*.txt" = "docs/"
+}
+ignored_patterns = ["target/", ".git/", "node_modules/", "Cargo.lock"]
+
+[directories]
+warn_scripts_location = true
+scripts_directory = "bin"
+structure = { 
+    "src/" = ["*.rs"], 
+    "tests/" = ["*_test.rs", "*_tests.rs", "test_*.rs"], 
+    "docs/" = ["*.md", "*.rst", "*.txt"],
+    "examples/" = ["*.rs", "*.md"],
+    "benches/" = ["*.rs"]
+}
+
+[rules]
+enabled_checks = ["git_branch", "file_location", "directory_structure"]
+disabled_checks = []
+custom_rules = [
+    { name = "no_debug_prints", pattern = "*.rs", message = "Remove debug println! statements before committing", severity = "warning" },
+    { name = "require_cargo_toml", pattern = "Cargo.toml", message = "Cargo.toml is required for Rust projects", severity = "error" },
+    { name = "no_tmp_files", pattern = "*.tmp", message = "Temporary files should not be committed", severity = "error" }
+] 

@@ -1,0 +1,63 @@
+# DevOps Profile
+# Activated when working with infrastructure and deployment projects
+
+[metadata]
+name = "devops-profile"
+version = "1.0.0"
+scope = "devops-infrastructure"
+updated = "2025-08-04"
+description = "Profile for DevOps and infrastructure projects"
+
+[activation]
+# Paths that trigger this profile
+paths = ["infra/", "terraform/", "kubernetes/", "docker/", "scripts/", "deploy/"]
+# File extensions that trigger this profile
+extensions = ["tf", "yaml", "yml", "json", "sh", "py", "dockerfile", "docker-compose"]
+# Git branch patterns that activate this profile
+branches = ["feature/infra-*", "devops-*", "deploy-*", "terraform-*"]
+# Project files that indicate DevOps work
+indicators = ["docker-compose.yml", "Dockerfile", "terraform.tf", "k8s.yaml", "helm/", "ansible/"]
+
+[enable]
+# Rule domains to enable for DevOps projects
+domains = ["security", "structure", "extensions", "format", "compliance"]
+# Plugins to enable for DevOps projects
+plugins = ["security-scanner", "compliance-checker", "cost-analyzer"]
+
+[devops_specific]
+# DevOps-specific settings
+check_secrets = true
+validate_yaml = true
+check_docker_best_practices = true
+validate_terraform = true
+check_kubernetes_manifests = true
+scan_for_hardcoded_secrets = true
+check_ssl_certificates = true
+
+[security]
+# Security-focused rules
+scan_for_passwords = true
+check_aws_keys = true
+validate_ssl_config = true
+check_permissions = true
+scan_for_vulnerabilities = true
+
+[structure]
+# DevOps-specific directory structure
+expected_dirs = ["infra/", "scripts/", "deploy/", "monitoring/", "logs/"]
+forbidden_dirs = ["secrets/", "keys/", "passwords/"]
+
+[extensions]
+# DevOps file extensions and their proper locations
+"*.tf" = "terraform/"
+"*.tfvars" = "terraform/"
+"*.yaml" = "kubernetes/"
+"*.yml" = "kubernetes/"
+"*.json" = "config/"
+"*.sh" = "scripts/"
+"*.py" = "scripts/"
+"Dockerfile" = "docker/"
+"docker-compose.yml" = "docker/"
+"*.env" = "config/"
+"*.conf" = "config/"
+"*.ini" = "config/" 

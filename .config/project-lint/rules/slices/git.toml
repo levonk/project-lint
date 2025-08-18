@@ -1,0 +1,54 @@
+# Git-specific rules and warnings
+# Handles git branch validation, commit messages, and repository state
+
+[metadata]
+name = "git-slice"
+version = "1.0.0"
+scope = "git-operations"
+updated = "2025-08-04"
+description = "Git-specific linting rules and warnings"
+
+[git_branch]
+# Branch validation rules
+warn_wrong_branch = true
+allowed_branches = ["main", "master", "feature/*", "fix/*", "hotfix/*"]
+forbidden_branches = ["develop", "staging", "wip/*", "temp/*"]
+protected_branches = ["main", "master", "production"]
+
+[branch_patterns]
+# Branch naming conventions
+feature_pattern = "feature/[a-z0-9-]+"
+fix_pattern = "fix/[a-z0-9-]+"
+hotfix_pattern = "hotfix/[a-z0-9-]+"
+release_pattern = "release/v[0-9]+\\.[0-9]+\\.[0-9]+"
+
+[commit_messages]
+# Commit message validation
+check_format = true
+require_ticket = false
+max_length = 72
+min_length = 10
+forbidden_words = ["WIP", "TODO", "FIXME", "HACK"]
+
+[repository_state]
+# Repository state checks
+check_clean_working_dir = true
+check_staged_changes = true
+check_unpushed_commits = true
+warn_large_files = true
+max_file_size_mb = 50
+
+[git_hooks]
+# Git hook integration
+pre_commit_enabled = true
+pre_push_enabled = true
+commit_msg_enabled = true
+
+[messages]
+branch_forbidden = "⚠️  Working on branch '{branch}' which is forbidden for file creation"
+branch_not_allowed = "⚠️  Working on branch '{branch}' which may not be appropriate for file creation"
+branch_protected = "🚫 Branch '{branch}' is protected - use a feature branch"
+commit_message_invalid = "📝 Commit message doesn't follow conventions"
+working_dir_dirty = "🧹 Working directory has uncommitted changes"
+large_file_detected = "📦 Large file detected: {file} ({size}MB)"
+unpushed_commits = "📤 You have {count} unpushed commits" 

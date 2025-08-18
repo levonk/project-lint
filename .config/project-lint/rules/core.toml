@@ -1,0 +1,55 @@
+# Core configuration for project-lint
+# Global toggles, severity, and metadata
+
+[metadata]
+name = "project-lint-core"
+version = "1.0.0"
+scope = "global"
+updated = "2025-08-04"
+description = "Core configuration with global settings and defaults"
+
+[global]
+# Global severity level (can be overridden by individual rules)
+default_severity = "warning"
+
+# Output format options: json, single-line, detailed
+output_format = "detailed"
+
+# Enable/disable core features
+enable_reactive_mode = true
+enable_auto_move = true
+enable_git_integration = true
+enable_file_watching = true
+
+# Performance settings
+max_file_size_mb = 10
+scan_timeout_seconds = 30
+debounce_ms = 1000
+
+[profiles]
+# Default profile to use when no specific profile is active
+default = "general"
+
+# Available profiles
+available = ["general", "web", "devops", "rust", "python", "node"]
+
+[plugins]
+# Core plugins that are always available
+core_plugins = ["git-hooks", "move-watcher"]
+
+# Optional plugins that can be enabled per profile
+optional_plugins = ["ai-nudge", "format-checker", "test-coverage"]
+
+[logging]
+level = "info"
+format = "colored"
+include_timestamps = true
+include_rule_names = true
+
+[output]
+# Output formatting options
+show_severity_icons = true
+show_rule_names = true
+show_file_paths = true
+group_by_severity = true
+max_issues_per_rule = 10 

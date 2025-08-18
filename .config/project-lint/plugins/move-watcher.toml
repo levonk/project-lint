@@ -1,0 +1,78 @@
+# Move Watcher Plugin
+# Automatically moves files to appropriate locations
+
+[metadata]
+name = "move-watcher-plugin"
+version = "1.0.0"
+scope = "file-movement"
+updated = "2025-08-04"
+description = "Automatic file movement and organization"
+
+[trigger]
+# Trigger conditions
+on = ["event:file:created", "event:file:modified", "event:path:changed"]
+
+[execute]
+# Execution logic
+command = "auto-move"
+condition = "file_type_detected && target_location_exists"
+timeout_seconds = 10
+confirm_before_move = true
+
+[auto_move]
+# Auto-move configuration
+enabled = true
+move_on_create = true
+move_on_modify = false
+preserve_git_history = true
+create_backup = true
+dry_run_first = true
+
+[file_detection]
+# File type detection
+use_extension = true
+use_content_analysis = true
+use_magic_numbers = true
+check_file_signatures = true
+
+[move_rules]
+# File movement rules
+"*.sh" = "bin/"
+"*.py" = "scripts/"
+"*.js" = "src/"
+"*.ts" = "src/"
+"*.rs" = "src/"
+"*.md" = "docs/"
+"*.txt" = "docs/"
+"*.png" = "assets/images/"
+"*.jpg" = "assets/images/"
+"*.svg" = "assets/icons/"
+
+[conditions]
+# Movement conditions
+target_exists = "target_directory_exists()"
+not_in_git = "file_not_tracked_by_git()"
+file_size_ok = "file_size_less_than(10MB)"
+extension_valid = "extension_in_allowed_list()"
+
+[safety]
+# Safety measures
+max_file_size_mb = 10
+backup_enabled = true
+undo_enabled = true
+confirmation_required = true
+log_all_moves = true
+
+[actions]
+# Available actions
+move_file = "move_file(source, target)"
+create_backup = "create_backup(file)"
+update_git = "git_mv(source, target)"
+log_move = "log_file_move(source, target)"
+
+[messages]
+file_moved = "📁 File '{file}' moved to '{target}'"
+move_failed = "❌ Failed to move '{file}' to '{target}': {error}"
+backup_created = "💾 Backup created: '{backup}'"
+undo_available = "↩️  Undo available: 'project-lint undo'"
+move_confirmed = "✅ Move confirmed: '{file}' → '{target}'" 

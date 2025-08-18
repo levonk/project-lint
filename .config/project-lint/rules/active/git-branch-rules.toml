@@ -1,0 +1,20 @@
+# Git Branch Rules
+# This rule file handles git branch validation
+
+name = "git-branch-rules"
+description = "Validate git branch usage and warn about inappropriate branches"
+enabled = true
+severity = "warning"
+
+[git]
+warn_wrong_branch = true
+allowed_branches = ["main", "master", "feature/*", "fix/*"]
+forbidden_branches = ["develop", "staging", "wip/*"]
+
+[conditions]
+# Only apply when in a git repository
+require_git_repo = true
+
+[messages]
+branch_forbidden = "⚠️  Working on branch '{branch}' which is forbidden for file creation"
+branch_not_allowed = "⚠️  Working on branch '{branch}' which may not be appropriate for file creation" 

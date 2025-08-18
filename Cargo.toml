@@ -1,0 +1,70 @@
+[package]
+name = "project-lint"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A CLI tool for project linting and file organization"
+license = "MIT"
+repository = "https://github.com/yourusername/project-lint"
+keywords = ["cli", "lint", "project", "git", "organization"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+# CLI framework
+clap = { version = "4.4", features = ["derive"] }
+
+# Configuration
+toml = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# File system operations
+walkdir = "2.4"
+notify = "6.1"
+
+# Git integration
+git2 = "0.18"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Terminal output
+colored = "2.0"
+indicatif = "0.17"
+
+# Path and environment
+dirs = "5.0"
+pathdiff = "0.2"
+
+# AST-based code analysis
+tree-sitter = "0.20"
+tree-sitter-rust = "0.20"
+tree-sitter-python = "0.20"
+tree-sitter-javascript = "0.20"
+tree-sitter-typescript = "0.20"
+tree-sitter-json = "0.20"
+tree-sitter-yaml = "0.20"
+tree-sitter-toml = "0.20"
+
+[dev-dependencies]
+tempfile = "3.8"
+assert_fs = "1.1"
+
+[[bin]]
+name = "project-lint"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true

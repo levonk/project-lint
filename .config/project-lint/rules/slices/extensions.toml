@@ -1,0 +1,90 @@
+# File extension logic and type detection
+# Handles file type mapping, extension validation, and content analysis
+
+[metadata]
+name = "extensions-slice"
+version = "1.0.0"
+scope = "file-extensions"
+updated = "2025-08-04"
+description = "File extension logic and type detection rules"
+
+[file_types]
+# File type definitions
+source_files = ["*.rs", "*.py", "*.js", "*.ts", "*.go", "*.java", "*.cpp", "*.c", "*.h"]
+script_files = ["*.sh", "*.py", "*.js", "*.ts", "*.rb", "*.pl", "*.php", "*.ps1"]
+config_files = ["*.toml", "*.yaml", "*.yml", "*.json", "*.ini", "*.conf", "*.env"]
+documentation = ["*.md", "*.rst", "*.txt", "*.adoc", "*.tex"]
+images = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.svg", "*.webp", "*.ico"]
+videos = ["*.mp4", "*.avi", "*.mov", "*.mkv", "*.webm"]
+audio = ["*.mp3", "*.wav", "*.flac", "*.ogg", "*.aac"]
+archives = ["*.zip", "*.tar", "*.gz", "*.rar", "*.7z"]
+binaries = ["*.exe", "*.dll", "*.so", "*.dylib", "*.bin"]
+
+[extension_mappings]
+# File extension to directory mappings
+"*.rs" = "src/"
+"*.py" = "src/"
+"*.js" = "src/"
+"*.ts" = "src/"
+"*.go" = "src/"
+"*.java" = "src/"
+"*.cpp" = "src/"
+"*.c" = "src/"
+"*.h" = "include/"
+"*.sh" = "bin/"
+"*.rb" = "scripts/"
+"*.pl" = "scripts/"
+"*.php" = "scripts/"
+"*.ps1" = "scripts/"
+"*.md" = "docs/"
+"*.rst" = "docs/"
+"*.txt" = "docs/"
+"*.adoc" = "docs/"
+"*.tex" = "docs/"
+"*.png" = "assets/images/"
+"*.jpg" = "assets/images/"
+"*.jpeg" = "assets/images/"
+"*.gif" = "assets/images/"
+"*.svg" = "assets/icons/"
+"*.webp" = "assets/images/"
+"*.ico" = "assets/icons/"
+"*.mp4" = "assets/videos/"
+"*.avi" = "assets/videos/"
+"*.mov" = "assets/videos/"
+"*.mkv" = "assets/videos/"
+"*.webm" = "assets/videos/"
+"*.mp3" = "assets/audio/"
+"*.wav" = "assets/audio/"
+"*.flac" = "assets/audio/"
+"*.ogg" = "assets/audio/"
+"*.aac" = "assets/audio/"
+"*.zip" = "downloads/"
+"*.tar" = "downloads/"
+"*.gz" = "downloads/"
+"*.rar" = "downloads/"
+"*.7z" = "downloads/"
+"*.exe" = "bin/"
+"*.dll" = "lib/"
+"*.so" = "lib/"
+"*.dylib" = "lib/"
+"*.bin" = "bin/"
+
+[content_analysis]
+# Content-based file type detection
+check_file_signatures = true
+check_magic_numbers = true
+validate_extension_content = true
+detect_misnamed_files = true
+
+[validation]
+# Extension validation rules
+forbid_uppercase_extensions = true
+require_lowercase_extensions = true
+check_extension_consistency = true
+warn_unknown_extensions = true
+
+[messages]
+extension_mismatch = "📄 File '{file}' has extension '{ext}' but content suggests '{detected_type}'"
+wrong_extension_case = "📄 File '{file}' should use lowercase extension"
+unknown_extension = "❓ Unknown file extension '{ext}' for file '{file}'"
+extension_inconsistency = "📄 Inconsistent extension usage in project" 

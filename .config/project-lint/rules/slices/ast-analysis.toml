@@ -1,0 +1,104 @@
+# AST-based code analysis rules
+# Uses tree-sitter for sophisticated code analysis
+
+[metadata]
+name = "ast-analysis-slice"
+version = "1.0.0"
+scope = "code-analysis"
+updated = "2025-08-04"
+description = "AST-based code analysis using tree-sitter"
+
+[ast_analysis]
+# Enable AST-based analysis
+enabled = true
+max_file_size_mb = 10
+timeout_seconds = 30
+
+[supported_languages]
+# Languages supported for AST analysis
+rust = true
+python = true
+javascript = true
+typescript = true
+json = true
+yaml = true
+toml = true
+
+[rust_rules]
+# Rust-specific AST rules
+check_println = true
+check_todo_comments = true
+check_unused_imports = true
+check_dead_code = true
+check_unsafe_blocks = true
+check_unwrapped_results = true
+
+[python_rules]
+# Python-specific AST rules
+check_print_statements = true
+check_todo_comments = true
+check_unused_imports = true
+check_bare_except = true
+check_mutable_defaults = true
+check_comprehensions = true
+
+[javascript_rules]
+# JavaScript/TypeScript-specific AST rules
+check_console_log = true
+check_todo_comments = true
+check_unused_variables = true
+check_console_debug = true
+check_alert_statements = true
+check_eval_usage = true
+
+[query_patterns]
+# Tree-sitter query patterns for different languages
+rust_patterns = [
+    "println_debug = \"(macro_invocation (identifier) @macro)\"",
+    "todo_comments = \"(line_comment) @comment\"",
+    "unsafe_blocks = \"(unsafe_block) @unsafe\"",
+    "unwrapped_results = \"(call_expression function: (identifier) @function)\""
+]
+
+python_patterns = [
+    "print_statements = \"(call function: (identifier) @function)\"",
+    "todo_comments = \"(comment) @comment\"",
+    "bare_except = \"(except_clause) @except\"",
+    "mutable_defaults = \"(defaults) @default\""
+]
+
+javascript_patterns = [
+    "console_log = \"(call_expression function: (identifier) @function)\"",
+    "todo_comments = \"(comment) @comment\"",
+    "alert_statements = \"(call_expression function: (identifier) @function)\"",
+    "eval_usage = \"(call_expression function: (identifier) @function)\""
+]
+
+[severity_mapping]
+# Severity levels for different types of issues
+debug_prints = "warning"
+todo_comments = "info"
+unused_imports = "warning"
+dead_code = "warning"
+unsafe_blocks = "error"
+unwrapped_results = "warning"
+bare_except = "error"
+mutable_defaults = "warning"
+console_debug = "warning"
+alert_statements = "error"
+eval_usage = "error"
+
+[messages]
+# Custom messages for AST issues
+println_detected = "🔍 Debug println! statement found at {file}:{line}:{column}"
+todo_comment = "📝 TODO comment found at {file}:{line}:{column}"
+unused_import = "📦 Unused import detected at {file}:{line}:{column}"
+dead_code = "💀 Dead code detected at {file}:{line}:{column}"
+unsafe_block = "⚠️  Unsafe block found at {file}:{line}:{column}"
+unwrapped_result = "🎯 Unwrapped Result found at {file}:{line}:{column}"
+print_statement = "🔍 Debug print statement found at {file}:{line}:{column}"
+bare_except = "🚫 Bare except clause found at {file}:{line}:{column}"
+mutable_default = "⚠️  Mutable default argument found at {file}:{line}:{column}"
+console_log = "🔍 Debug console.log found at {file}:{line}:{column}"
+alert_statement = "🚫 Alert statement found at {file}:{line}:{column}"
+eval_usage = "🚫 Eval usage found at {file}:{line}:{column}" 

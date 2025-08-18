@@ -1,0 +1,38 @@
+# File Organization Rules
+# This rule file handles file placement and organization
+
+name = "file-organization"
+description = "Ensure files are placed in appropriate directories based on type"
+enabled = true
+severity = "warning"
+
+[file_mappings]
+# Script files should be in bin/ or scripts/
+"*.sh" = "bin/"
+"*.py" = "scripts/"
+"*.js" = "scripts/"
+"*.ts" = "scripts/"
+"*.rb" = "scripts/"
+"*.pl" = "scripts/"
+"*.php" = "scripts/"
+
+# Documentation files
+"*.md" = "docs/"
+"*.rst" = "docs/"
+"*.txt" = "docs/"
+
+# Source files
+"*.rs" = "src/"
+"*.py" = "src/"
+"*.js" = "src/"
+"*.ts" = "src/"
+
+[ignored_patterns]
+"node_modules/" = true
+".git/" = true
+"target/" = true
+"dist/" = true
+"Cargo.lock" = true
+
+[messages]
+file_misplaced = "📁 File '{file}' should be in '{target_dir}' directory (matches pattern '{pattern}')" 

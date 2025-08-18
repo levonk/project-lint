@@ -1,0 +1,29 @@
+# Basic project-lint configuration
+# This file should be placed in .config/project-lint/config.toml
+
+[git]
+warn_wrong_branch = true
+allowed_branches = ["main", "master", "feature/*"]
+forbidden_branches = ["develop", "staging"]
+
+[files]
+auto_move = true
+type_mappings = { "*.sh" = "bin/", "*.py" = "scripts/", "*.js" = "scripts/", "*.ts" = "scripts/" }
+ignored_patterns = ["node_modules/", ".git/", "target/", "dist/"]
+
+[directories]
+warn_scripts_location = true
+scripts_directory = "bin"
+structure = { 
+    "src/" = ["*.rs", "*.py", "*.js", "*.ts"], 
+    "tests/" = ["*_test.*", "*_spec.*", "test_*.*"], 
+    "docs/" = ["*.md", "*.rst", "*.txt"] 
+}
+
+[rules]
+enabled_checks = ["git_branch", "file_location", "directory_structure"]
+disabled_checks = []
+custom_rules = [
+    { name = "no_tmp_files", pattern = "*.tmp", message = "Temporary files should not be committed", severity = "error" },
+    { name = "require_readme", pattern = "README.md", message = "README.md is required for documentation", severity = "warning" }
+] 
