@@ -9,9 +9,9 @@ mod config;
 mod git;
 mod utils;
 
+use crate::utils::Result;
 use commands::{init, lint, watch};
 use config::Config;
-use utils::Result;
 
 #[derive(Parser)]
 #[command(

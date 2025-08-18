@@ -1,7 +1,7 @@
+use crate::utils::Result;
 use git2::{BranchType, Repository};
 use std::path::Path;
 use tracing::{debug, warn};
-use utils::Result;
 
 pub struct GitInfo {
     pub current_branch: String,

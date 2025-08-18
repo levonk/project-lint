@@ -1,13 +1,13 @@
+use crate::utils::Result;
 use colored::Colorize;
 use tracing::{info, warn};
-use utils::Result;
 
 use crate::config::Config;
 
 pub async fn run(force: bool) -> Result<()> {
     info!("Initializing project-lint configuration");
 
-    let config_dir = utils::get_config_dir()?;
+    let config_dir = crate::utils::get_config_dir()?;
     let config_file = config_dir.join("config.toml");
 
     if config_file.exists() && !force {

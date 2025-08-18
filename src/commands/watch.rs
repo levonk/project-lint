@@ -1,10 +1,10 @@
+use crate::utils::Result;
 use colored::Colorize;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
-use utils::Result;
 
 use crate::config::Config;
 

@@ -1,8 +1,8 @@
+use crate::utils::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::{debug, info, warn};
-use utils::Result;
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -529,7 +529,7 @@ impl Default for RulesConfig {
 
 impl Config {
     pub fn load() -> Result<Self> {
-        let config_dir = utils::get_config_dir()?;
+        let config_dir = crate::utils::get_config_dir()?;
         let config_file = config_dir.join("config.toml");
 
         let mut config = if config_file.exists() {
@@ -594,8 +594,9 @@ impl Config {
                 match std::fs::read_to_string(profile_path) {
                     Ok(content) => match toml::from_str::<Profile>(&content) {
                         Ok(profile) => {
+                            let name = profile.metadata.name.clone();
                             profiles.push(profile);
-                            debug!("Loaded profile: {}", profile.metadata.name);
+                            debug!("Loaded profile: {}", name);
                         }
                         Err(e) => {
                             warn!("Failed to parse profile file {:?}: {}", profile_path, e);
@@ -633,8 +634,9 @@ impl Config {
                 match std::fs::read_to_string(plugin_path) {
                     Ok(content) => match toml::from_str::<Plugin>(&content) {
                         Ok(plugin) => {
+                            let name = plugin.metadata.name.clone();
                             plugins.push(plugin);
-                            debug!("Loaded plugin: {}", plugin.metadata.name);
+                            debug!("Loaded plugin: {}", name);
                         }
                         Err(e) => {
                             warn!("Failed to parse plugin file {:?}: {}", plugin_path, e);
@@ -673,8 +675,9 @@ impl Config {
                     Ok(content) => match toml::from_str::<ModularRule>(&content) {
                         Ok(rule) => {
                             if rule.enabled {
+                                let name = rule.name.clone();
                                 rules.push(rule);
-                                debug!("Loaded rule: {}", rule.name);
+                                debug!("Loaded rule: {}", name);
                             } else {
                                 debug!("Skipping disabled rule: {}", rule.name);
                             }
@@ -695,7 +698,7 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
-        let config_dir = utils::get_config_dir()?;
+        let config_dir = crate::utils::get_config_dir()?;
         std::fs::create_dir_all(&config_dir)?;
 
         let config_file = config_dir.join("config.toml");
