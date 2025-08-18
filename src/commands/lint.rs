@@ -1,7 +1,7 @@
+use crate::utils::Result;
 use colored::Colorize;
 use std::path::Path;
 use tracing::{debug, info, warn};
-use utils::Result;
 use walkdir::WalkDir;
 
 use crate::ast::{ASTAnalyzer, ASTIssue};
@@ -23,7 +23,7 @@ pub async fn run(project_path: &str) -> Result<()> {
     }
 
     // Initialize AST analyzer
-    let ast_analyzer = ASTAnalyzer::new()?;
+    let mut ast_analyzer = ASTAnalyzer::new()?;
 
     // Process modular rules
     debug!("Processing {} modular rules", config.modular_rules.len());
@@ -35,7 +35,7 @@ pub async fn run(project_path: &str) -> Result<()> {
 
     // Perform AST-based analysis
     debug!("Performing AST-based analysis");
-    perform_ast_analysis(project_path, &ast_analyzer, &mut issues)?;
+    perform_ast_analysis(project_path, &mut ast_analyzer, &mut issues)?;
 
     // Legacy checks (for backward compatibility)
     if !config
@@ -79,7 +79,7 @@ pub async fn run(project_path: &str) -> Result<()> {
 
 fn perform_ast_analysis(
     project_path: &str,
-    ast_analyzer: &ASTAnalyzer,
+    ast_analyzer: &mut ASTAnalyzer,
     issues: &mut Vec<String>,
 ) -> Result<()> {
     for entry in WalkDir::new(project_path)
@@ -149,9 +149,13 @@ fn process_modular_rule(
                 )?;
 
                 if !branch_allowed {
-                    let message = rule.messages.as_ref()
-                        .and_then(|m| m.get("branch_not_allowed"))
-                        .unwrap_or(&"⚠️  Working on branch '{branch}' which may not be appropriate for file creation".to_string());
+                    let message: String = rule
+                        .messages
+                        .as_ref()
+                        .and_then(|m| m.get("branch_not_allowed").cloned())
+                        .unwrap_or_else(||
+                            "⚠️  Working on branch '{branch}' which may not be appropriate for file creation".to_string()
+                        );
 
                     issues.push(message.replace("{branch}", &git_info.current_branch));
                 }
@@ -210,9 +214,13 @@ fn check_file_organization(
             if matches_pattern(&file_name, pattern) {
                 let current_dir = relative_path.parent().unwrap_or_else(|| Path::new(""));
                 if current_dir.to_string_lossy() != target_dir.trim_end_matches('/') {
-                    let message = rule.messages.as_ref()
-                        .and_then(|m| m.get("file_misplaced"))
-                        .unwrap_or(&"📁 File '{file}' should be in '{target_dir}' directory (matches pattern '{pattern}')".to_string());
+                    let message: String = rule
+                        .messages
+                        .as_ref()
+                        .and_then(|m| m.get("file_misplaced").cloned())
+                        .unwrap_or_else(||
+                            "📁 File '{file}' should be in '{target_dir}' directory (matches pattern '{pattern}')".to_string()
+                        );
 
                     issues.push(
                         message
@@ -253,13 +261,13 @@ fn check_script_locations(
             let preferred_dir = script_config.preferred_directory.trim_end_matches('/');
 
             if current_dir.to_string_lossy() != preferred_dir {
-                let message = rule
+                let message: String = rule
                     .messages
                     .as_ref()
-                    .and_then(|m| m.get("script_in_wrong_location"))
-                    .unwrap_or(
-                        &"📜 Script '{file}' should be in '{preferred_dir}' directory".to_string(),
-                    );
+                    .and_then(|m| m.get("script_in_wrong_location").cloned())
+                    .unwrap_or_else(|| {
+                        "📜 Script '{file}' should be in '{preferred_dir}' directory".to_string()
+                    });
 
                 issues.push(
                     message
