@@ -1,8 +1,8 @@
+use crate::utils::Result;
 use std::collections::HashMap;
 use std::path::Path;
-use tracing::{debug, warn};
+use tracing::debug;
 use tree_sitter::{Parser, Query, QueryCursor};
-use utils::Result;
 
 pub struct ASTAnalyzer {
     parsers: HashMap<String, Parser>,
@@ -26,52 +26,39 @@ impl ASTAnalyzer {
 
         // Initialize Rust parser
         let mut rust_parser = Parser::new();
-        rust_parser
-            .set_language(tree_sitter_rust::language())
-            .unwrap();
+        let rust_lang = tree_sitter_rust::LANGUAGE;
+        rust_parser.set_language(&rust_lang.into()).unwrap();
         parsers.insert("rust".to_string(), rust_parser);
 
         // Initialize Python parser
         let mut python_parser = Parser::new();
-        python_parser
-            .set_language(tree_sitter_python::language())
-            .unwrap();
+        let python_lang = tree_sitter_python::LANGUAGE;
+        python_parser.set_language(&python_lang.into()).unwrap();
         parsers.insert("python".to_string(), python_parser);
 
         // Initialize JavaScript parser
         let mut js_parser = Parser::new();
-        js_parser
-            .set_language(tree_sitter_javascript::language())
-            .unwrap();
+        let js_lang = tree_sitter_javascript::LANGUAGE;
+        js_parser.set_language(&js_lang.into()).unwrap();
         parsers.insert("javascript".to_string(), js_parser);
 
         // Initialize TypeScript parser
         let mut ts_parser = Parser::new();
-        ts_parser
-            .set_language(tree_sitter_typescript::language())
-            .unwrap();
+        let ts_lang = tree_sitter_typescript::LANGUAGE_TYPESCRIPT;
+        ts_parser.set_language(&ts_lang.into()).unwrap();
         parsers.insert("typescript".to_string(), ts_parser);
 
         // Initialize JSON parser
         let mut json_parser = Parser::new();
-        json_parser
-            .set_language(tree_sitter_json::language())
-            .unwrap();
+        let json_lang = tree_sitter_json::LANGUAGE;
+        json_parser.set_language(&json_lang.into()).unwrap();
         parsers.insert("json".to_string(), json_parser);
 
         // Initialize YAML parser
         let mut yaml_parser = Parser::new();
-        yaml_parser
-            .set_language(tree_sitter_yaml::language())
-            .unwrap();
+        let yaml_lang = tree_sitter_yaml::LANGUAGE;
+        yaml_parser.set_language(&yaml_lang.into()).unwrap();
         parsers.insert("yaml".to_string(), yaml_parser);
-
-        // Initialize TOML parser
-        let mut toml_parser = Parser::new();
-        toml_parser
-            .set_language(tree_sitter_toml::language())
-            .unwrap();
-        parsers.insert("toml".to_string(), toml_parser);
 
         // Load queries for different languages
         Self::load_queries(&mut queries)?;
@@ -79,7 +66,7 @@ impl ASTAnalyzer {
         Ok(ASTAnalyzer { parsers, queries })
     }
 
-    fn load_queries(&mut queries: &mut HashMap<String, Query>) -> Result<()> {
+    fn load_queries(queries: &mut HashMap<String, Query>) -> Result<()> {
         // Rust queries
         let rust_queries = vec![
             ("unused_imports", "(use_declaration) @import"),
@@ -89,7 +76,7 @@ impl ASTAnalyzer {
         ];
 
         for (name, query_str) in rust_queries {
-            if let Ok(query) = Query::new(tree_sitter_rust::language(), query_str) {
+            if let Ok(query) = Query::new(&tree_sitter_rust::LANGUAGE.into(), query_str) {
                 queries.insert(format!("rust_{}", name), query);
             }
         }
@@ -102,7 +89,7 @@ impl ASTAnalyzer {
         ];
 
         for (name, query_str) in python_queries {
-            if let Ok(query) = Query::new(tree_sitter_python::language(), query_str) {
+            if let Ok(query) = Query::new(&tree_sitter_python::LANGUAGE.into(), query_str) {
                 queries.insert(format!("python_{}", name), query);
             }
         }
@@ -117,7 +104,7 @@ impl ASTAnalyzer {
         ];
 
         for (name, query_str) in js_queries {
-            if let Ok(query) = Query::new(tree_sitter_javascript::language(), query_str) {
+            if let Ok(query) = Query::new(&tree_sitter_javascript::LANGUAGE.into(), query_str) {
                 queries.insert(format!("javascript_{}", name), query);
             }
         }
@@ -125,12 +112,12 @@ impl ASTAnalyzer {
         Ok(())
     }
 
-    pub fn analyze_file(&self, file_path: &Path, content: &str) -> Result<Vec<ASTIssue>> {
+    pub fn analyze_file(&mut self, file_path: &Path, content: &str) -> Result<Vec<ASTIssue>> {
         let mut issues = Vec::new();
         let extension = file_path.extension().unwrap_or_default().to_string_lossy();
         let language = self.get_language_from_extension(&extension);
 
-        if let Some(parser) = self.parsers.get(&language) {
+        if let Some(parser) = self.parsers.get_mut(&language) {
             debug!("Analyzing {} file: {:?}", language, file_path);
 
             let tree = parser.parse(content, None).unwrap();
@@ -172,9 +159,9 @@ impl ASTAnalyzer {
     ) -> Result<()> {
         // Check for println! debug statements
         let query_str = "(macro_invocation (identifier) @macro)";
-        if let Ok(query) = Query::new(tree_sitter_rust::language(), query_str) {
+        if let Ok(query) = Query::new(&tree_sitter_rust::LANGUAGE.into(), query_str) {
             let mut cursor = QueryCursor::new();
-            let matches = cursor.matches(&query, root_node, content.as_bytes());
+            let matches = cursor.matches(&query, *root_node, content.as_bytes());
 
             for m in matches {
                 for capture in m.captures {
@@ -199,9 +186,9 @@ impl ASTAnalyzer {
 
         // Check for TODO comments
         let query_str = "(line_comment) @comment";
-        if let Ok(query) = Query::new(tree_sitter_rust::language(), query_str) {
+        if let Ok(query) = Query::new(&tree_sitter_rust::LANGUAGE.into(), query_str) {
             let mut cursor = QueryCursor::new();
-            let matches = cursor.matches(&query, root_node, content.as_bytes());
+            let matches = cursor.matches(&query, *root_node, content.as_bytes());
 
             for m in matches {
                 for capture in m.captures {
@@ -235,9 +222,9 @@ impl ASTAnalyzer {
     ) -> Result<()> {
         // Check for print statements
         let query_str = "(call function: (identifier) @function)";
-        if let Ok(query) = Query::new(tree_sitter_python::language(), query_str) {
+        if let Ok(query) = Query::new(&tree_sitter_python::LANGUAGE.into(), query_str) {
             let mut cursor = QueryCursor::new();
-            let matches = cursor.matches(&query, root_node, content.as_bytes());
+            let matches = cursor.matches(&query, *root_node, content.as_bytes());
 
             for m in matches {
                 for capture in m.captures {
@@ -261,9 +248,9 @@ impl ASTAnalyzer {
 
         // Check for TODO comments
         let query_str = "(comment) @comment";
-        if let Ok(query) = Query::new(tree_sitter_python::language(), query_str) {
+        if let Ok(query) = Query::new(&tree_sitter_python::LANGUAGE.into(), query_str) {
             let mut cursor = QueryCursor::new();
-            let matches = cursor.matches(&query, root_node, content.as_bytes());
+            let matches = cursor.matches(&query, *root_node, content.as_bytes());
 
             for m in matches {
                 for capture in m.captures {
@@ -297,9 +284,9 @@ impl ASTAnalyzer {
     ) -> Result<()> {
         // Check for console.log statements
         let query_str = "(call_expression function: (identifier) @function)";
-        if let Ok(query) = Query::new(tree_sitter_javascript::language(), query_str) {
+        if let Ok(query) = Query::new(&tree_sitter_javascript::LANGUAGE.into(), query_str) {
             let mut cursor = QueryCursor::new();
-            let matches = cursor.matches(&query, root_node, content.as_bytes());
+            let matches = cursor.matches(&query, *root_node, content.as_bytes());
 
             for m in matches {
                 for capture in m.captures {
@@ -334,9 +321,9 @@ impl ASTAnalyzer {
 
         // Check for TODO comments
         let query_str = "(comment) @comment";
-        if let Ok(query) = Query::new(tree_sitter_javascript::language(), query_str) {
+        if let Ok(query) = Query::new(&tree_sitter_javascript::LANGUAGE.into(), query_str) {
             let mut cursor = QueryCursor::new();
-            let matches = cursor.matches(&query, root_node, content.as_bytes());
+            let matches = cursor.matches(&query, *root_node, content.as_bytes());
 
             for m in matches {
                 for capture in m.captures {
