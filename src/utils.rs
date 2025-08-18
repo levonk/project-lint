@@ -27,12 +27,6 @@ pub enum ProjectLintError {
     TomlSerialize(#[from] toml::ser::Error),
 }
 
-impl From<ProjectLintError> for anyhow::Error {
-    fn from(err: ProjectLintError) -> Self {
-        anyhow::anyhow!(err)
-    }
-}
-
 pub fn get_project_root() -> Result<std::path::PathBuf> {
     let current_dir = std::env::current_dir()?;
 
