@@ -106,6 +106,32 @@ pub struct ProfileActivation {
     pub extensions: Vec<String>,
     pub branches: Vec<String>,
     pub indicators: Vec<String>,
+    #[serde(default)]
+    pub globs: Vec<String>,
+    #[serde(default)]
+    pub content: Vec<ContentTrigger>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentTrigger {
+    pub matches: Vec<String>,
+    #[serde(default)]
+    pub globs: Vec<String>,
+    #[serde(default)]
+    pub position: MatchPosition,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum MatchPosition {
+    Any,
+    Header, // First 1024 bytes
+}
+
+impl Default for MatchPosition {
+    fn default() -> Self {
+        MatchPosition::Any
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

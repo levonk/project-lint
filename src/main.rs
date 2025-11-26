@@ -6,7 +6,10 @@ use tracing_subscriber::FmtSubscriber;
 mod ast;
 mod commands;
 mod config;
+mod detection;
 mod git;
+mod profiles;
+mod security;
 mod utils;
 
 use crate::utils::Result;
@@ -42,6 +45,12 @@ enum Commands {
         /// Path to the project root (defaults to current directory)
         #[arg(short, long)]
         path: Option<String>,
+        /// Apply automatic fixes to detected issues
+        #[arg(long)]
+        fix: bool,
+        /// Show what would be fixed without making changes
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Watch for file changes and run linting automatically
     Watch {
@@ -75,9 +84,9 @@ async fn main() -> Result<()> {
         Commands::Init { force } => {
             init::run(force).await?;
         }
-        Commands::Lint { path } => {
+        Commands::Lint { path, fix, dry_run } => {
             let project_path = path.unwrap_or_else(|| ".".to_string());
-            lint::run(&project_path).await?;
+            lint::run(&project_path, fix, dry_run).await?;
         }
         Commands::Watch { path } => {
             let project_path = path.unwrap_or_else(|| ".".to_string());

@@ -11,8 +11,8 @@ description = "Profile for web development projects"
 [activation]
 # Paths that trigger this profile
 paths = ["src/web/", "public/", "assets/", "static/", "dist/", "build/"]
-# File extensions that trigger this profile
-extensions = ["html", "css", "js", "ts", "jsx", "tsx", "vue", "svelte"]
+# File globs that trigger this profile
+globs = ["**/*.html", "**/*.css", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx", "**/*.vue", "**/*.svelte"]
 # Git branch patterns that activate this profile
 branches = ["feature/web-*", "web-*", "frontend-*"]
 # Project files that indicate web development

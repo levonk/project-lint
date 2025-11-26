@@ -7,19 +7,53 @@ use walkdir::WalkDir;
 use crate::ast::{ASTAnalyzer, ASTIssue};
 use crate::config::{Config, ModularRule};
 use crate::git::{check_branch_allowed, get_git_info};
+use crate::profiles;
+use crate::security::SecurityScanner;
 
-pub async fn run(project_path: &str) -> Result<()> {
+pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
     info!("Running linting checks on project: {}", project_path);
+    
+    if apply_fixes && dry_run {
+        return Err(anyhow::anyhow!("Cannot use --fix and --dry-run together"));
+    }
+    
+    if apply_fixes {
+        info!("Fix mode enabled - violations will be automatically corrected");
+    }
+    if dry_run {
+        info!("Dry-run mode enabled - showing what would be fixed without making changes");
+    }
 
-    let config = Config::load()?;
+    let mut config = Config::load()?;
     let mut issues = Vec::new();
 
     // Check if project path exists
-    if !Path::new(project_path).exists() {
+    let project_path_obj = Path::new(project_path);
+    if !project_path_obj.exists() {
         return Err(anyhow::anyhow!(
             "Project path does not exist: {}",
             project_path
         ));
+    }
+
+    // Determine active profiles
+    let active_profiles = profiles::get_active_profiles(project_path_obj, &config.active_profiles)?;
+    if !active_profiles.is_empty() {
+        info!(
+            "Active profiles: {}",
+            active_profiles
+                .iter()
+                .map(|p| p.metadata.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+                .green()
+        );
+        
+        // In the future: Apply profile configurations here
+        // For now, we just replace the available profiles with the active ones in the config
+        config.active_profiles = active_profiles;
+    } else {
+        debug!("No specific profiles activated");
     }
 
     // Initialize AST analyzer
@@ -36,6 +70,10 @@ pub async fn run(project_path: &str) -> Result<()> {
     // Perform AST-based analysis
     debug!("Performing AST-based analysis");
     perform_ast_analysis(project_path, &mut ast_analyzer, &mut issues)?;
+
+    // Perform security scanning
+    debug!("Performing security analysis");
+    perform_security_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
 
     // Legacy checks (for backward compatibility)
     if !config
@@ -427,6 +465,108 @@ fn matches_pattern(file_name: &str, pattern: &str) -> bool {
     } else {
         file_name == pattern
     }
+}
+
+fn perform_security_analysis(
+    project_path: &str,
+    issues: &mut Vec<String>,
+    apply_fixes: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let scanner = match SecurityScanner::new() {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("Failed to initialize security scanner: {}", e);
+            return Ok(());
+        }
+    };
+
+    let mut security_issues = Vec::new();
+    let mut total_fixes = 0;
+
+    // Scan all source files
+    for entry in WalkDir::new(project_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path();
+        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+
+        // Skip common non-source files
+        if file_name.starts_with('.')
+            || file_name.ends_with(".lock")
+            || file_name.ends_with(".min.js")
+            || path.to_string_lossy().contains("node_modules")
+            || path.to_string_lossy().contains("target")
+            || path.to_string_lossy().contains(".git")
+        {
+            continue;
+        }
+
+        // Check if it's a source file
+        let is_source = file_name.ends_with(".rs")
+            || file_name.ends_with(".py")
+            || file_name.ends_with(".js")
+            || file_name.ends_with(".ts")
+            || file_name.ends_with(".tsx")
+            || file_name.ends_with(".jsx")
+            || file_name.ends_with(".go")
+            || file_name.ends_with(".c")
+            || file_name.ends_with(".h")
+            || file_name.ends_with(".cpp")
+            || file_name.ends_with(".java")
+            || file_name.ends_with(".cs");
+
+        if !is_source {
+            continue;
+        }
+
+        match scanner.scan_file(path) {
+            Ok(detected_issues) => {
+                for issue in detected_issues {
+                    security_issues.push(issue.clone());
+                    issues.push(format!(
+                        "🔒 [{}] {} ({}:{})",
+                        issue.severity.to_uppercase(),
+                        issue.message,
+                        issue.file,
+                        issue.line
+                    ));
+                }
+
+                // Apply fixes if requested
+                if (apply_fixes || dry_run) && !detected_issues.is_empty() {
+                    match scanner.apply_fixes(path, &detected_issues, dry_run) {
+                        Ok(fixes) => {
+                            total_fixes += fixes;
+                            if fixes > 0 {
+                                if dry_run {
+                                    info!("Would fix {} issues in {}", fixes, path.display());
+                                } else {
+                                    info!("Fixed {} issues in {}", fixes, path.display());
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to apply fixes to {}: {}", path.display(), e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Error scanning {}: {}", path.display(), e);
+            }
+        }
+    }
+
+    if apply_fixes && total_fixes > 0 {
+        info!("✅ Applied {} security fixes", total_fixes);
+    } else if dry_run && total_fixes > 0 {
+        info!("📋 Would apply {} security fixes", total_fixes);
+    }
+
+    Ok(())
 }
 
 fn is_script_file(file_name: &str) -> bool {

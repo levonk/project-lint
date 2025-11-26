@@ -1,7 +1,10 @@
 pub mod ast;
 pub mod commands;
 pub mod config;
+pub mod detection;
 pub mod git;
+pub mod profiles;
+pub mod security;
 pub mod utils;
 
 // Re-export main types for easier testing

@@ -1,0 +1,135 @@
+# Security-focused static analysis rules
+# Detects hardcoded credentials, insecure functions, and cryptographic issues
+
+[metadata]
+name = "security-static-slice"
+version = "1.0.0"
+scope = "security-static-analysis"
+updated = "2025-11-24"
+description = "Static security analysis for hardcoded credentials, insecure functions, and crypto issues"
+
+[hardcoded_credentials]
+# Detect common secret patterns
+enabled = true
+check_aws_keys = true
+check_stripe_keys = true
+check_google_api_keys = true
+check_github_tokens = true
+check_jwt_tokens = true
+check_private_keys = true
+check_connection_strings = true
+
+[aws_key_patterns]
+prefixes = ["AKIA", "AGPA", "AIDA", "AROA", "AIPA", "ANPA", "ANVA", "ASIA"]
+min_length = 20
+
+[stripe_key_patterns]
+prefixes = ["sk_live_", "pk_live_", "sk_test_", "pk_test_"]
+
+[github_token_patterns]
+prefixes = ["ghp_", "gho_", "ghu_", "ghs_", "ghr_"]
+
+[jwt_patterns]
+starts_with = "eyJ"
+pattern = "^eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+
+[private_key_patterns]
+start_marker = "-----BEGIN"
+end_marker = "-----END PRIVATE KEY-----"
+
+[suspicious_variable_names]
+patterns = ["password", "secret", "api_key", "token", "auth", "credential"]
+
+[insecure_c_functions]
+# Detect unsafe C/C++ functions
+enabled = true
+check_gets = true
+check_strcpy = true
+check_strcat = true
+check_sprintf = true
+check_scanf = true
+check_strtok = true
+check_memcpy = true
+
+[c_function_replacements]
+gets = "fgets"
+strcpy = "strcpy_s or snprintf"
+strcat = "strcat_s or snprintf"
+sprintf = "snprintf"
+scanf = "fgets + sscanf"
+strtok = "strtok_s or strtok_r"
+memcpy = "memcpy_s"
+memset = "memset_s"
+memmove = "memmove_s"
+
+[insecure_crypto_functions]
+# Detect banned cryptographic functions and algorithms
+enabled = true
+check_md5 = true
+check_sha1 = true
+check_des = true
+check_rc4 = true
+check_blowfish = true
+check_deprecated_apis = true
+
+[banned_crypto_algorithms]
+hash = ["MD2", "MD4", "MD5", "SHA-0", "SHA-1"]
+symmetric = ["RC2", "RC4", "Blowfish", "DES", "3DES"]
+key_exchange = ["Static RSA", "Anonymous Diffie-Hellman"]
+
+[deprecated_crypto_apis]
+openssl_aes = ["AES_encrypt", "AES_decrypt"]
+openssl_rsa = ["RSA_new", "RSA_free", "RSA_up_ref"]
+openssl_hash = ["SHA1_Init", "SHA1_Update", "SHA1_Final"]
+openssl_hmac = ["HMAC"]
+
+[certificate_issues]
+# Detect certificate files and embedded certificates
+enabled = true
+check_expiration = true
+check_weak_keys = true
+check_insecure_signatures = true
+check_self_signed = true
+
+[certificate_patterns]
+pem_start = "-----BEGIN CERTIFICATE-----"
+pem_end = "-----END CERTIFICATE-----"
+file_extensions = [".pem", ".crt", ".cer", ".der"]
+
+[certificate_checks]
+min_rsa_key_bits = 2048
+min_ec_key_bits = 256
+forbidden_signature_algorithms = ["md5WithRSAEncryption", "sha1WithRSAEncryption"]
+
+[messages]
+# Hardcoded credentials
+aws_key_detected = "🔐 AWS access key detected: {key}. This is a hardcoded credential and must be removed immediately."
+stripe_key_detected = "🔐 Stripe API key detected: {key}. This is a hardcoded credential and must be removed immediately."
+github_token_detected = "🔐 GitHub token detected: {token}. This is a hardcoded credential and must be removed immediately."
+jwt_token_detected = "🔐 JWT token detected at {file}:{line}. This is a hardcoded credential and must be removed immediately."
+private_key_detected = "🔐 Private key block detected in {file}. This is a hardcoded credential and must be removed immediately."
+connection_string_with_creds = "🔐 Connection string with credentials detected at {file}:{line}. Move credentials to environment variables."
+suspicious_variable = "⚠️  Variable '{name}' at {file}:{line} looks like it might contain credentials. Review and move to environment variables."
+
+# Insecure C functions
+unsafe_gets = "❌ Unsafe function 'gets()' detected at {file}:{line}. Replace with fgets() for bounds checking."
+unsafe_strcpy = "❌ Unsafe function 'strcpy()' detected at {file}:{line}. Replace with strcpy_s() or snprintf() for bounds checking."
+unsafe_strcat = "❌ Unsafe function 'strcat()' detected at {file}:{line}. Replace with strcat_s() or snprintf() for bounds checking."
+unsafe_sprintf = "❌ Unsafe function 'sprintf()' detected at {file}:{line}. Replace with snprintf() for bounds checking."
+unsafe_scanf = "❌ Unsafe function 'scanf()' detected at {file}:{line}. Use fgets() + sscanf() or add width specifiers."
+unsafe_strtok = "❌ Unsafe function 'strtok()' detected at {file}:{line}. Replace with strtok_s() or strtok_r() for thread safety."
+unsafe_memcpy = "❌ Unsafe function 'memcpy()' detected at {file}:{line}. Replace with memcpy_s() for bounds checking."
+
+# Insecure crypto
+md5_usage = "🚫 MD5 hash algorithm detected at {file}:{line}. MD5 is cryptographically broken. Use SHA-256 or stronger."
+sha1_usage = "🚫 SHA-1 algorithm detected at {file}:{line}. SHA-1 is deprecated. Use SHA-256 or stronger."
+des_usage = "🚫 DES encryption detected at {file}:{line}. DES is insecure. Use AES-256 or stronger."
+rc4_usage = "🚫 RC4 cipher detected at {file}:{line}. RC4 is broken. Use AES-GCM or ChaCha20."
+deprecated_openssl_api = "🚫 Deprecated OpenSSL API '{function}' detected at {file}:{line}. Use EVP high-level APIs instead."
+
+# Certificates
+certificate_expired = "🚫 CRITICAL: Certificate in {file} expired on {date}. It must be renewed immediately."
+certificate_not_yet_valid = "⚠️  Certificate in {file} is not yet valid. Validity begins on {date}."
+weak_certificate_key = "⚠️  Certificate in {file} uses weak {algorithm} key ({bits} bits). Minimum recommended: {min_bits} bits."
+insecure_certificate_signature = "⚠️  Certificate in {file} is signed with insecure algorithm '{algorithm}'. Use SHA-256 or stronger."
+self_signed_certificate = "ℹ️  Self-signed certificate detected in {file}. Ensure this is intentional and only used for development/testing."

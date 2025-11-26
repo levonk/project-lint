@@ -11,8 +11,8 @@ description = "Profile for DevOps and infrastructure projects"
 [activation]
 # Paths that trigger this profile
 paths = ["infra/", "terraform/", "kubernetes/", "docker/", "scripts/", "deploy/"]
-# File extensions that trigger this profile
-extensions = ["tf", "yaml", "yml", "json", "sh", "py", "dockerfile", "docker-compose"]
+# File globs that trigger this profile
+globs = ["**/*.tf", "**/*.yaml", "**/*.yml", "**/*.json", "**/*.sh", "**/*.py", "**/Dockerfile*", "**/docker-compose*.yml", "**/docker-compose*.yaml"]
 # Git branch patterns that activate this profile
 branches = ["feature/infra-*", "devops-*", "deploy-*", "terraform-*"]
 # Project files that indicate DevOps work

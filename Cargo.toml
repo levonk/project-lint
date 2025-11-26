@@ -43,6 +43,8 @@ indicatif = "0.17"
 # Path and environment
 dirs = "5.0"
 pathdiff = "0.2"
+glob = "0.3"
+regex = "1.10"
 
 # AST-based code analysis
 tree-sitter = "0.23"
