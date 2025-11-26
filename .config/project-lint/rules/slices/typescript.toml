@@ -1,0 +1,121 @@
+# TypeScript-specific linting rules
+# Based on job-aide typescript-rules.md
+
+[metadata]
+name = "typescript-slice"
+version = "1.0.0"
+scope = "typescript-linting"
+updated = "2025-11-25"
+description = "TypeScript and JavaScript code quality rules including file extensions, path aliases, module systems, and code style"
+
+[file_extensions]
+# Explicit module system indicators
+enabled = true
+must_use_explicit = true
+allowed_extensions = [".mts", ".cts", ".tsx", ".mjs", ".cjs", ".d.ts", ".test.ts", ".config.ts"]
+forbidden_extensions = [".ts", ".js"]
+rationale = "Explicit extensions prevent tooling confusion and clearly indicate module system"
+
+[path_aliases]
+# TypeScript path alias configuration
+enabled = true
+must_use_explicit_categories = true
+forbidden_patterns = ["@/*"]
+allowed_patterns = [
+    "@/core/*",
+    "@/features/*",
+    "@/components/*",
+    "@/utils/*",
+    "@/lib/*",
+    "@/types/*",
+    "@/job-aide/*",
+    "@/app/*"
+]
+rationale = "Prevents conflicts with npm scoped packages like @radix-ui/*"
+
+[module_system]
+# ESM vs CommonJS enforcement
+enabled = true
+prefer_esm = true
+require_in_esm_files = false
+import_in_commonjs_files = false
+rationale = "Consistent module system reduces tooling issues and improves compatibility"
+
+[code_style]
+# Code formatting and style rules
+enabled = true
+quote_style = "double"
+indentation_spaces = 2
+require_semicolons = true
+filename_case = "kebab-case"
+prefer_type_over_interface = true
+require_import_type = true
+
+[eslint_configuration]
+# ESLint setup requirements
+enabled = true
+required_config = "@job-aide/tools-lint-eslint-config"
+config_files = ["eslint.config.mts", "eslint.config.ts"]
+rationale = "Standardized ESLint config ensures consistent code quality across projects"
+
+[process_env_access]
+# Environment variable access patterns
+enabled = true
+allow_direct_access = false
+require_config_abstraction = true
+severity = "warn"
+rationale = "Config abstraction layer prevents accidental exposure of sensitive values"
+
+[package_structure]
+# Required package structure and documentation
+enabled = true
+required_files = ["README.md", "package.json"]
+required_directories = ["src", "docs", "tests"]
+require_jsdoc_on_exports = true
+rationale = "Consistent structure improves maintainability and discoverability"
+
+[testing]
+# Test file configuration
+enabled = true
+test_extensions = [".test.mts", ".test.ts", ".spec.mts", ".spec.ts"]
+test_framework = "vitest"
+require_tests_for_features = true
+rationale = "Vitest provides fast, ESM-native testing for TypeScript projects"
+
+[messages]
+# Issue messages and guidance
+
+# File extension issues
+ambiguous_ts_extension = "❌ Ambiguous TypeScript extension '.ts' detected. Use '.mts' (ESM), '.cts' (CommonJS), or '.test.ts' for tests."
+ambiguous_js_extension = "❌ Ambiguous JavaScript extension '.js' detected. Use '.mjs' (ESM), '.cjs' (CommonJS), or '.config.js' for config."
+
+# Path alias issues
+ambiguous_path_alias = "❌ Ambiguous path alias '@/*' detected. Use explicit category aliases like '@/core/*', '@/features/*', '@/components/*', '@/utils/*', '@/lib/*', '@/types/*'."
+conflicting_scoped_package = "⚠️  Path alias '@/*' may conflict with npm scoped packages like '@radix-ui/*'. Use explicit category-based aliases instead."
+
+# Module system issues
+require_in_esm = "❌ 'require()' detected in ESM file. Use 'import' statements in .mts and .tsx files."
+import_in_commonjs = "❌ 'import' detected in CommonJS file. Use 'require()' in .cts files."
+
+# Code style issues
+single_quotes = "⚠️  Single quotes detected. Use double quotes (\") instead."
+missing_semicolon = "⚠️  Missing semicolon at end of statement."
+interface_instead_of_type = "ℹ️  'interface' detected. Prefer 'type' for type definitions."
+import_without_type = "ℹ️  Import statement detected. Use 'import type' for type-only imports."
+
+# ESLint configuration issues
+missing_eslint_config = "ℹ️  ESLint config file found. Ensure it uses @job-aide/tools-lint-eslint-config."
+direct_process_env = "⚠️  Direct process.env access detected. Use config abstraction instead."
+
+# Package structure issues
+missing_readme = "ℹ️  README.md found. Ensure it contains usage and examples."
+missing_jsdoc = "ℹ️  Public API detected. Add JSDoc comments."
+
+# Test file issues
+wrong_test_extension = "❌ Test file with ambiguous extension '.test.ts' detected. Use '.test.mts' for ESM test files."
+vitest_import = "ℹ️  Test framework detected. Ensure Vitest is configured."
+
+# References and documentation
+adr_file_extensions = "See ADR-20251019001 for file extension rationale"
+adr_path_aliases = "See ADR-20251019002 for path alias safety guidelines"
+adr_eslint_config = "See ADR-20251019003 for ESLint plugin composition API"

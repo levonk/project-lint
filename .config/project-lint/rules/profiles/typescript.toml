@@ -1,0 +1,65 @@
+[metadata]
+name = "typescript"
+description = "TypeScript/Node.js project profile"
+version = "1.0.0"
+
+[activation]
+# Activate on TypeScript projects
+indicators = ["package.json", "tsconfig.json"]
+globs = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"]
+
+[[activation.content]]
+matches = ["typescript", "\"@types/"]
+globs = ["package.json"]
+position = "any"
+
+[settings]
+# TypeScript-specific settings
+strict_mode = true
+check_file_extensions = true
+check_path_aliases = true
+check_module_system = true
+check_code_style = true
+check_eslint_config = true
+
+[file_organization]
+# Expected directory structure for TypeScript projects
+expected_dirs = ["src", "tests", "docs"]
+forbidden_dirs = ["lib", "dist"]
+
+[file_placement]
+# File type organization
+"**/*.ts" = "src/"
+"**/*.tsx" = "src/"
+"**/*.mts" = "src/"
+"**/*.cts" = "src/"
+"**/*.test.ts" = "tests/"
+"**/*.test.mts" = "tests/"
+"**/*.spec.ts" = "tests/"
+"**/*.spec.mts" = "tests/"
+
+[special_files]
+# Special files that must exist
+required = ["package.json", "tsconfig.json"]
+recommended = ["README.md", "eslint.config.mts", ".gitignore"]
+
+[file_naming]
+# File naming conventions
+prefer_kebab_case = true
+allow_camel_case_for_classes = true
+allow_pascal_case_for_types = true
+
+[directory_naming]
+# Directory naming conventions
+prefer_kebab_case = true
+allow_plural_names = true
+
+[messages]
+# Custom messages for TypeScript projects
+profile_activated = "📘 TypeScript profile activated - applying TypeScript-specific rules"
+strict_mode_enabled = "✓ Strict TypeScript mode enabled"
+file_extension_check = "Checking file extensions for explicit module system indicators"
+path_alias_check = "Validating path aliases for conflicts with npm scoped packages"
+module_system_check = "Verifying consistent module system usage"
+code_style_check = "Enforcing TypeScript code style guidelines"
+eslint_config_check = "Verifying ESLint configuration"

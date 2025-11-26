@@ -10,6 +10,7 @@ mod detection;
 mod git;
 mod profiles;
 mod security;
+mod typescript;
 mod utils;
 
 use crate::utils::Result;

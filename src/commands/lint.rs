@@ -9,6 +9,7 @@ use crate::config::{Config, ModularRule};
 use crate::git::{check_branch_allowed, get_git_info};
 use crate::profiles;
 use crate::security::SecurityScanner;
+use crate::typescript::TypeScriptScanner;
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
     info!("Running linting checks on project: {}", project_path);
@@ -74,6 +75,10 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
     // Perform security scanning
     debug!("Performing security analysis");
     perform_security_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
+
+    // Perform TypeScript linting
+    debug!("Performing TypeScript analysis");
+    perform_typescript_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
 
     // Legacy checks (for backward compatibility)
     if !config
@@ -564,6 +569,107 @@ fn perform_security_analysis(
         info!("✅ Applied {} security fixes", total_fixes);
     } else if dry_run && total_fixes > 0 {
         info!("📋 Would apply {} security fixes", total_fixes);
+    }
+
+    Ok(())
+}
+
+fn perform_typescript_analysis(
+    project_path: &str,
+    issues: &mut Vec<String>,
+    apply_fixes: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let scanner = match TypeScriptScanner::new() {
+        Ok(s) => s,
+        Err(e) => {
+            debug!("TypeScript scanner initialization failed: {}", e);
+            return Ok(());
+        }
+    };
+
+    let mut total_fixes = 0;
+
+    // Scan TypeScript and JavaScript files
+    for entry in WalkDir::new(project_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path();
+        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+
+        // Skip common non-source files
+        if file_name.starts_with('.')
+            || file_name.ends_with(".lock")
+            || file_name.ends_with(".min.js")
+            || path.to_string_lossy().contains("node_modules")
+            || path.to_string_lossy().contains("dist")
+            || path.to_string_lossy().contains("build")
+            || path.to_string_lossy().contains(".git")
+        {
+            continue;
+        }
+
+        // Check if it's a TypeScript/JavaScript file
+        let is_ts_file = file_name.ends_with(".ts")
+            || file_name.ends_with(".mts")
+            || file_name.ends_with(".cts")
+            || file_name.ends_with(".tsx")
+            || file_name.ends_with(".js")
+            || file_name.ends_with(".mjs")
+            || file_name.ends_with(".cjs")
+            || file_name.ends_with(".jsx")
+            || file_name == "tsconfig.json"
+            || file_name == "package.json"
+            || file_name == "eslint.config.mts"
+            || file_name == "eslint.config.ts";
+
+        if !is_ts_file {
+            continue;
+        }
+
+        match scanner.scan_file(path) {
+            Ok(detected_issues) => {
+                for issue in detected_issues {
+                    issues.push(format!(
+                        "📘 [TypeScript] [{}] {} ({}:{})",
+                        issue.severity.to_uppercase(),
+                        issue.message,
+                        issue.file,
+                        issue.line
+                    ));
+                }
+
+                // Apply fixes if requested
+                if (apply_fixes || dry_run) && !detected_issues.is_empty() {
+                    match scanner.apply_fixes(path, &detected_issues, dry_run) {
+                        Ok(fixes) => {
+                            total_fixes += fixes;
+                            if fixes > 0 {
+                                if dry_run {
+                                    info!("Would fix {} TypeScript issues in {}", fixes, path.display());
+                                } else {
+                                    info!("Fixed {} TypeScript issues in {}", fixes, path.display());
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            debug!("Failed to apply TypeScript fixes to {}: {}", path.display(), e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Error scanning TypeScript file {}: {}", path.display(), e);
+            }
+        }
+    }
+
+    if apply_fixes && total_fixes > 0 {
+        info!("✅ Applied {} TypeScript fixes", total_fixes);
+    } else if dry_run && total_fixes > 0 {
+        info!("📋 Would apply {} TypeScript fixes", total_fixes);
     }
 
     Ok(())
