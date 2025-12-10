@@ -1,9 +1,14 @@
 pub mod ast;
 pub mod commands;
 pub mod config;
+pub mod config_validation;
 pub mod detection;
 pub mod git;
+pub mod markdown_frontmatter;
+pub mod package_organization;
+pub mod pnpm_lockfile;
 pub mod profiles;
+pub mod runtime_guards;
 pub mod security;
 pub mod typescript;
 pub mod utils;
