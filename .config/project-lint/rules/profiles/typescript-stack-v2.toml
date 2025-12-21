@@ -1,0 +1,40 @@
+[metadata]
+name = "typescript-stack"
+version = "1.0.0"
+scope = "project"
+updated = "2025-10-19"
+description = "Comprehensive TypeScript stack profile including new TS standards, Node monorepo rules, and frontend essentials."
+
+[activation]
+# Activated if ANY of these exist
+paths = ["src"]
+extensions = [".ts", ".tsx", ".mts", ".cts"]
+globs = ["tsconfig.json", "package.json", "pnpm-workspace.yaml"]
+
+# Content triggers (optional but precise)
+[[activation.content]]
+matches = ["typescript", "@types/node"]
+globs = ["package.json"]
+
+[enable]
+domains = ["typescript", "javascript", "node"]
+plugins = ["git-hooks"]
+
+[checks]
+# Enable specific checks
+enabled = [
+    "git_branch",
+    "file_location",
+    "directory_structure",
+    "typescript_analysis",
+    "ast_analysis"
+]
+
+# Include these rule slices
+[checks.slices]
+include = [
+    "typescript.toml",
+    "node-monorepo-standards.toml",
+    "frontend-essentials.toml",
+    "docs-adr.toml"
+]

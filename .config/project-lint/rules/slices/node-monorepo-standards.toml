@@ -1,0 +1,39 @@
+# Node.js and Monorepo standards
+# Enforces package manager standards and tooling configuration
+
+[metadata]
+name = "node-monorepo-standards"
+version = "1.0.0"
+scope = "node-ecosystem"
+updated = "2025-12-19"
+description = "Warn on npm/yarn usage when pnpm is the standard, and ensure turborepo/vitest markers are present."
+
+[[rules]]
+name = "npm_script_usage"
+pattern = "package.json"
+message = "Scripts reference npm. Prefer pnpm per repo standards."
+severity = "warning"
+check_content = true
+content_pattern = "npm "
+
+[[rules]]
+name = "yarn_script_usage"
+pattern = "package.json"
+message = "Scripts reference yarn. Prefer pnpm per repo standards."
+severity = "warning"
+check_content = true
+content_pattern = "yarn "
+
+[[rules]]
+name = "missing_turbo"
+pattern = "turbo.json"
+message = "turbo.json not found. If this is a monorepo, add turborepo config."
+severity = "warning"
+required = true
+
+[[rules]]
+name = "missing_vitest_config"
+pattern = "vitest.config.*"
+message = "Vitest config not found. If tests are present, add vitest.config.*."
+severity = "warning"
+required = true

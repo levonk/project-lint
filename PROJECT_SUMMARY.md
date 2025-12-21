@@ -247,6 +247,8 @@ The project includes comprehensive tests:
 - **Requirements**: Detailed technical requirements
 - **Examples**: Sample configurations for different project types
 - **Code Comments**: Extensive inline documentation
+- **Remaining Work**: See `docs-internal/requirements/20251219-remaining-work.md` for the active checklist governing
+  container hardening, monorepo standards, documentation hygiene, feature scaffolding, and ops guardrails.
 
 ## Next Steps
 

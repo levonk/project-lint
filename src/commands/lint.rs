@@ -3,6 +3,7 @@ use colored::Colorize;
 use std::path::Path;
 use tracing::{debug, info, warn};
 use walkdir::WalkDir;
+use glob::Pattern;
 
 use crate::ast::{ASTAnalyzer, ASTIssue};
 use crate::config::{Config, ModularRule};
@@ -13,11 +14,11 @@ use crate::typescript::TypeScriptScanner;
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
     info!("Running linting checks on project: {}", project_path);
-    
+
     if apply_fixes && dry_run {
         return Err(anyhow::anyhow!("Cannot use --fix and --dry-run together"));
     }
-    
+
     if apply_fixes {
         info!("Fix mode enabled - violations will be automatically corrected");
     }
@@ -49,7 +50,7 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
                 .join(", ")
                 .green()
         );
-        
+
         // In the future: Apply profile configurations here
         // For now, we just replace the available profiles with the active ones in the config
         config.active_profiles = active_profiles;
@@ -64,27 +65,34 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
     debug!("Processing {} modular rules", config.modular_rules.len());
     for rule in &config.modular_rules {
         if rule.enabled {
-            process_modular_rule(project_path, rule, &mut issues)?;
+            process_modular_rule(project_path, rule, &mut issues, &config)?;
         }
     }
 
     // Perform AST-based analysis
-    debug!("Performing AST-based analysis");
-    perform_ast_analysis(project_path, &mut ast_analyzer, &mut issues)?;
+    if config.is_check_enabled("ast_analysis") {
+        debug!("Performing AST-based analysis");
+        perform_ast_analysis(project_path, &mut ast_analyzer, &mut issues)?;
+    }
 
     // Perform security scanning
-    debug!("Performing security analysis");
-    perform_security_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
+    if config.is_check_enabled("security_analysis") {
+        debug!("Performing security analysis");
+        perform_security_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
+    }
 
     // Perform TypeScript linting
-    debug!("Performing TypeScript analysis");
-    perform_typescript_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
+    if config.is_check_enabled("typescript_analysis") {
+        debug!("Performing TypeScript analysis");
+        perform_typescript_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
+    }
 
     // Legacy checks (for backward compatibility)
     if !config
         .modular_rules
         .iter()
         .any(|r| r.name == "git-branch-rules")
+        && config.is_check_enabled("git_branch")
     {
         check_legacy_git_branches(project_path, &config, &mut issues)?;
     }
@@ -93,6 +101,7 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
         .modular_rules
         .iter()
         .any(|r| r.name == "file-organization")
+        && config.is_check_enabled("file_location")
     {
         check_legacy_file_structure(project_path, &config, &mut issues)?;
     }
@@ -101,6 +110,7 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
         .modular_rules
         .iter()
         .any(|r| r.name == "script-location")
+        && config.is_check_enabled("directory_structure")
     {
         check_legacy_directory_structure(project_path, &config, &mut issues)?;
     }
@@ -178,48 +188,57 @@ fn process_modular_rule(
     project_path: &str,
     rule: &ModularRule,
     issues: &mut Vec<String>,
+    config: &Config,
 ) -> Result<()> {
     debug!("Processing rule: {}", rule.name);
 
     // Git branch rules
-    if let Some(git_config) = &rule.git {
-        if let Some(git_info) = get_git_info(project_path)? {
-            if git_config.warn_wrong_branch {
-                let branch_allowed = check_branch_allowed(
-                    &git_info,
-                    &git_config.allowed_branches,
-                    &git_config.forbidden_branches,
-                )?;
+    if config.is_check_enabled("git_branch") {
+        if let Some(git_config) = &rule.git {
+            if let Some(git_info) = get_git_info(project_path)? {
+                if git_config.warn_wrong_branch {
+                    let branch_allowed = check_branch_allowed(
+                        &git_info,
+                        &git_config.allowed_branches,
+                        &git_config.forbidden_branches,
+                    )?;
 
-                if !branch_allowed {
-                    let message: String = rule
-                        .messages
-                        .as_ref()
-                        .and_then(|m| m.get("branch_not_allowed").cloned())
-                        .unwrap_or_else(||
-                            "⚠️  Working on branch '{branch}' which may not be appropriate for file creation".to_string()
-                        );
+                    if !branch_allowed {
+                        let message: String = rule
+                            .messages
+                            .as_ref()
+                            .and_then(|m| m.get("branch_not_allowed").cloned())
+                            .unwrap_or_else(||
+                                "⚠️  Working on branch '{branch}' which may not be appropriate for file creation".to_string()
+                            );
 
-                    issues.push(message.replace("{branch}", &git_info.current_branch));
+                        issues.push(message.replace("{branch}", &git_info.current_branch));
+                    }
                 }
             }
         }
     }
 
     // File organization rules
-    if let Some(file_mappings) = &rule.file_mappings {
-        check_file_organization(project_path, file_mappings, rule, issues)?;
+    if config.is_check_enabled("file_location") {
+        if let Some(file_mappings) = &rule.file_mappings {
+            check_file_organization(project_path, file_mappings, rule, issues)?;
+        }
     }
 
     // Script location rules
-    if let Some(script_config) = &rule.scripts {
-        check_script_locations(project_path, script_config, rule, issues)?;
+    if config.is_check_enabled("directory_structure") {
+        if let Some(script_config) = &rule.scripts {
+            check_script_locations(project_path, script_config, rule, issues)?;
+        }
     }
 
     // Custom rules
-    if let Some(custom_rules) = &rule.rules {
-        for custom_rule in custom_rules {
-            check_custom_rule(project_path, custom_rule, issues)?;
+    if config.is_check_enabled("custom_rules") {
+        if let Some(custom_rules) = &rule.rules {
+            for custom_rule in custom_rules {
+                check_custom_rule(project_path, custom_rule, issues)?;
+            }
         }
     }
 
@@ -329,6 +348,23 @@ fn check_custom_rule(
     custom_rule: &crate::config::CustomRule,
     issues: &mut Vec<String>,
 ) -> Result<()> {
+    // Check conditional requirement
+    if let Some(req_path) = &custom_rule.required_if_path_exists {
+        if !std::path::Path::new(project_path).join(req_path).exists() {
+            debug!("Skipping rule '{}' because required path '{}' does not exist", custom_rule.name, req_path);
+            return Ok(());
+        }
+    }
+
+    let mut found_match = false;
+
+    // Determine effective allow status for filename checks
+    // If a rule is required (or conditionally required which we checked above), finding the file is generally good.
+    // But if we are in denylist mode (default), finding a match is bad unless allowed.
+    // If `required` is true, we want to find it.
+    // If `required` is false, we don't want to find it (denylist).
+    let is_allowed = custom_rule.required || custom_rule.required_if_path_exists.is_some();
+
     for entry in WalkDir::new(project_path)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -336,20 +372,130 @@ fn check_custom_rule(
     {
         let path = entry.path();
         let relative_path = path.strip_prefix(project_path).unwrap_or(path);
+        let relative_path_str = relative_path.to_string_lossy();
         let file_name = path.file_name().unwrap_or_default().to_string_lossy();
 
-        if matches_pattern(&file_name, &custom_rule.pattern) {
-            let severity_icon = match custom_rule.severity {
-                crate::config::RuleSeverity::Error => "❌",
-                crate::config::RuleSeverity::Warning => "⚠️",
-                crate::config::RuleSeverity::Info => "ℹ️",
-            };
+        let mut matched = false;
 
-            issues.push(format!(
-                "{} {}: {}",
-                severity_icon, custom_rule.name, custom_rule.message
-            ));
+        // Try glob matching on relative path
+        if let Ok(pattern) = Pattern::new(&custom_rule.pattern) {
+            if pattern.matches(&relative_path_str) {
+                matched = true;
+            }
         }
+
+        // Fallback to filename matching (legacy behavior)
+        if !matched && matches_pattern(&file_name, &custom_rule.pattern) {
+             matched = true;
+        }
+
+        if matched {
+            found_match = true;
+
+            // Check content if required
+            if custom_rule.check_content {
+                if let Ok(content) = std::fs::read_to_string(path) {
+                    let mut issue_found = false;
+
+                    if let Some(pattern) = &custom_rule.content_pattern {
+                        let contains = content.contains(pattern);
+
+                        match custom_rule.condition.as_deref() {
+                            Some("must_contain") => {
+                                // Issue if content DOES NOT contain pattern
+                                if !contains {
+                                    issue_found = true;
+                                }
+                            }
+                            _ => {
+                                // Default: Issue if content DOES contain pattern (denylist)
+                                if contains {
+                                    issue_found = true;
+                                }
+                            }
+                        }
+                    } else {
+                        // If check_content is true but no pattern specified
+                        // If must_contain is set, and no pattern, that's weird config.
+                        // Assume issue found for file existence if no pattern and default condition.
+                        issue_found = true;
+                    }
+
+                    if issue_found {
+                        // Check for exception pattern
+                        if let Some(exception) = &custom_rule.exception_pattern {
+                            if content.contains(exception) {
+                                debug!("Rule '{}' matched/triggered but exception pattern found, skipping", custom_rule.name);
+                                continue;
+                            }
+                        }
+
+                        let severity_icon = match custom_rule.severity {
+                            crate::config::RuleSeverity::Error => "❌",
+                            crate::config::RuleSeverity::Warning => "⚠️",
+                            crate::config::RuleSeverity::Info => "ℹ️",
+                        };
+
+                        issues.push(format!(
+                            "{} {}: {} ({})",
+                            severity_icon,
+                            custom_rule.name,
+                            custom_rule.message,
+                            relative_path.display()
+                        ));
+                    }
+                }
+            } else {
+                // Filename match only
+                // If allowed (required or conditionally required), finding matches is good/neutral.
+                // If NOT allowed (denylist), finding matches is bad.
+
+                if !is_allowed {
+                    let severity_icon = match custom_rule.severity {
+                        crate::config::RuleSeverity::Error => "❌",
+                        crate::config::RuleSeverity::Warning => "⚠️",
+                        crate::config::RuleSeverity::Info => "ℹ️",
+                    };
+
+                    issues.push(format!(
+                        "{} {}: {} ({})",
+                        severity_icon,
+                        custom_rule.name,
+                        custom_rule.message,
+                        relative_path.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    // If required is true (or conditional met) and NO match found, report issue.
+    // We already checked conditional requirement at the top, so if we are here, it IS required if `required` or `required_if` is set.
+    // Wait. `required` field is explicit. `required_if` implies requirement if path exists.
+    // So if `required` OR `required_if` is set, we expect a match.
+    let expect_match = custom_rule.required || custom_rule.required_if_path_exists.is_some();
+
+    if expect_match && !found_match {
+         let severity_icon = match custom_rule.severity {
+            crate::config::RuleSeverity::Error => "❌",
+            crate::config::RuleSeverity::Warning => "⚠️",
+            crate::config::RuleSeverity::Info => "ℹ️",
+        };
+
+        let context_msg = if let Some(req_path) = &custom_rule.required_if_path_exists {
+            format!(" (Required because '{}' exists)", req_path)
+        } else {
+            "".to_string()
+        };
+
+        issues.push(format!(
+            "{} {}: {} (Missing required file matching '{}'{})",
+            severity_icon,
+            custom_rule.name,
+            custom_rule.message,
+            custom_rule.pattern,
+            context_msg
+        ));
     }
 
     Ok(())
@@ -529,7 +675,7 @@ fn perform_security_analysis(
 
         match scanner.scan_file(path) {
             Ok(detected_issues) => {
-                for issue in detected_issues {
+                for issue in &detected_issues {
                     security_issues.push(issue.clone());
                     issues.push(format!(
                         "🔒 [{}] {} ({}:{})",
@@ -631,7 +777,7 @@ fn perform_typescript_analysis(
 
         match scanner.scan_file(path) {
             Ok(detected_issues) => {
-                for issue in detected_issues {
+                for issue in &detected_issues {
                     issues.push(format!(
                         "📘 [TypeScript] [{}] {} ({}:{})",
                         issue.severity.to_uppercase(),

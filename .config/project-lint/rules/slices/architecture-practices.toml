@@ -1,0 +1,48 @@
+# Architecture and Feature hygiene standards
+# Enforces config placement, feature scaffolding, and acceptance criteria
+
+[metadata]
+name = "architecture-practices"
+version = "1.0.0"
+scope = "architecture"
+updated = "2025-12-19"
+description = "Architecture hygiene: enforce config placement, feature flags, and acceptance criteria markers."
+
+[[rules]]
+name = "feature_acceptance_criteria"
+pattern = "internal-docs/features/**/*.md"
+message = "Feature doc missing 'Acceptance Criteria' section."
+severity = "warning"
+check_content = true
+content_pattern = "Acceptance Criteria"
+condition = "must_contain"
+
+[[rules]]
+name = "feature_nfr_markers"
+pattern = "internal-docs/features/**/*.md"
+message = "Feature doc missing 'Non-Functional Requirements' (NFR) section."
+severity = "warning"
+check_content = true
+content_pattern = "Non-Functional Requirements"
+condition = "must_contain"
+
+[[rules]]
+name = "config_placement"
+pattern = "*.{toml,yaml,json}"
+message = "Config file found outside 'config/' or 'internal-docs/config/'. Move it."
+severity = "warning"
+check_content = false
+# This rule logic relies on matching files that are NOT in allowed paths; simple pattern matching limitation.
+# For now, we rely on the directory structure slice which handles this better.
+# Placeholder to document intent.
+enabled = false
+
+[[rules]]
+name = "feature_flag_scaffolding"
+pattern = "**/features/*/Cargo.toml"
+message = "Feature package missing 'flags' module scaffolding."
+severity = "warning"
+check_content = true
+content_pattern = "flags"
+condition = "must_contain"
+required = false

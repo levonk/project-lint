@@ -7,7 +7,9 @@ use crate::config::Config;
 pub async fn run(force: bool) -> Result<()> {
     info!("Initializing project-lint configuration");
 
-    let config_dir = crate::utils::get_config_dir()?;
+    // Initialize in the current project root
+    let project_root = crate::utils::get_project_root()?;
+    let config_dir = project_root.join(".config").join("project-lint");
     let config_file = config_dir.join("config.toml");
 
     if config_file.exists() && !force {
@@ -18,7 +20,8 @@ pub async fn run(force: bool) -> Result<()> {
     }
 
     // Create default configuration
-    Config::create_default_config()?;
+    let config = Config::default();
+    config.save_to(&config_dir)?;
 
     println!("{}", "✓ Project-lint initialized successfully!".green());
     println!("Configuration created at: {:?}", config_file);

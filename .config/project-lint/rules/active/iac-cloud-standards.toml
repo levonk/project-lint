@@ -1,0 +1,37 @@
+# IaC/Cloud standards (warn-only, silent if no matching files)
+name = "iac-cloud-standards"
+description = "Warn on common IaC/cloud misconfigurations; scoped by file presence."
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "terraform_no_open_ingress"
+pattern = "**/*.tf"
+message = "Avoid 0.0.0.0/0 on admin/db ports. Restrict ingress."
+severity = "warning"
+check_content = true
+content_pattern = "0.0.0.0/0"
+
+[[rules]]
+name = "terraform_enable_encryption"
+pattern = "**/*.tf"
+message = "Ensure storage/db resources have encryption at rest enabled."
+severity = "warning"
+check_content = true
+content_pattern = "encrypted"
+
+[[rules]]
+name = "pulumi_no_open_ingress"
+pattern = "**/*.pulumi.*"
+message = "Avoid 0.0.0.0/0 on admin/db ports. Restrict ingress."
+severity = "warning"
+check_content = true
+content_pattern = "0.0.0.0/0"
+
+[[rules]]
+name = "pulumi_enable_encryption"
+pattern = "**/*.pulumi.*"
+message = "Ensure storage/db resources have encryption at rest enabled."
+severity = "warning"
+check_content = true
+content_pattern = "encrypted"

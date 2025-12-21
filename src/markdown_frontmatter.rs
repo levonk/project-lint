@@ -136,8 +136,8 @@ impl MarkdownFrontmatterRuleSet {
     }
 
     fn is_valid_adr_id(id: &str) -> bool {
-        // Format: YYYYMMDDNNN (14 digits)
-        id.len() == 14 && id.chars().all(|c| c.is_ascii_digit())
+        // Format: YYYYMMDDNNN (11 digits)
+        id.len() == 11 && id.chars().all(|c| c.is_ascii_digit())
     }
 
     fn is_valid_date(date: &str) -> bool {

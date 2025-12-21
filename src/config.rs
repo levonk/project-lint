@@ -82,6 +82,8 @@ pub struct Profile {
     pub activation: ProfileActivation,
     pub enable: ProfileEnable,
     #[serde(default)]
+    pub checks: Option<ProfileChecks>,
+    #[serde(default)]
     pub web_specific: Option<WebSpecificConfig>,
     #[serde(default)]
     pub devops_specific: Option<DevOpsSpecificConfig>,
@@ -95,6 +97,7 @@ pub struct Profile {
 pub struct ProfileMetadata {
     pub name: String,
     pub version: String,
+    #[serde(default)]
     pub scope: String,
     pub updated: String,
     pub description: String,
@@ -102,9 +105,13 @@ pub struct ProfileMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileActivation {
+    #[serde(default)]
     pub paths: Vec<String>,
+    #[serde(default)]
     pub extensions: Vec<String>,
+    #[serde(default)]
     pub branches: Vec<String>,
+    #[serde(default)]
     pub indicators: Vec<String>,
     #[serde(default)]
     pub globs: Vec<String>,
@@ -138,6 +145,22 @@ impl Default for MatchPosition {
 pub struct ProfileEnable {
     pub domains: Vec<String>,
     pub plugins: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileChecks {
+    #[serde(default)]
+    pub enable: Vec<String>,
+    #[serde(default)]
+    pub disable: Vec<String>,
+    #[serde(default)]
+    pub slices: Option<ProfileSlices>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileSlices {
+    #[serde(default)]
+    pub include: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,6 +244,7 @@ pub struct PluginExecute {
     pub command: String,
     pub condition: String,
     pub timeout_seconds: u64,
+    #[serde(default)]
     pub fail_on_errors: bool,
 }
 
@@ -353,11 +377,26 @@ pub struct RulesConfig {
     /// Custom linting rules
     #[serde(default)]
     pub custom_rules: Vec<CustomRule>,
+    #[serde(default)]
+    pub mode: RulesMode,
     /// Enable/disable specific checks
     #[serde(default)]
     pub enabled_checks: Vec<String>,
     #[serde(default)]
     pub disabled_checks: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum RulesMode {
+    Denylist,
+    Allowlist,
+}
+
+impl Default for RulesMode {
+    fn default() -> Self {
+        RulesMode::Denylist
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -366,6 +405,18 @@ pub struct CustomRule {
     pub pattern: String,
     pub message: String,
     pub severity: RuleSeverity,
+    #[serde(default)]
+    pub check_content: bool,
+    #[serde(default)]
+    pub content_pattern: Option<String>,
+    #[serde(default)]
+    pub exception_pattern: Option<String>,
+    #[serde(default)]
+    pub condition: Option<String>, // e.g., "contains", "must_contain"
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub required_if_path_exists: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -543,10 +594,15 @@ impl Default for RulesConfig {
     fn default() -> Self {
         Self {
             custom_rules: vec![],
+            mode: RulesMode::Denylist,
             enabled_checks: vec![
                 "git_branch".to_string(),
                 "file_location".to_string(),
                 "directory_structure".to_string(),
+                "ast_analysis".to_string(),
+                "security_analysis".to_string(),
+                "typescript_analysis".to_string(),
+                "custom_rules".to_string(),
             ],
             disabled_checks: vec![],
         }
@@ -725,7 +781,11 @@ impl Config {
 
     pub fn save(&self) -> Result<()> {
         let config_dir = crate::utils::get_config_dir()?;
-        std::fs::create_dir_all(&config_dir)?;
+        self.save_to(&config_dir)
+    }
+
+    pub fn save_to(&self, config_dir: &PathBuf) -> Result<()> {
+        std::fs::create_dir_all(config_dir)?;
 
         let config_file = config_dir.join("config.toml");
         let content = toml::to_string_pretty(self)?;
@@ -739,5 +799,178 @@ impl Config {
         let config = Config::default();
         config.save()?;
         Ok(())
+    }
+
+    pub fn is_check_enabled(&self, check_name: &str) -> bool {
+        let effective_enabled = self.get_effective_enabled_checks();
+        let effective_disabled = self.get_effective_disabled_checks();
+
+        match self.rules.mode {
+            RulesMode::Allowlist => effective_enabled.contains(check_name),
+            RulesMode::Denylist => !effective_disabled.contains(check_name),
+        }
+    }
+
+    fn get_effective_enabled_checks(&self) -> std::collections::HashSet<String> {
+        let mut enabled = std::collections::HashSet::new();
+
+        // Add repo rules
+        for check in &self.rules.enabled_checks {
+            enabled.insert(check.clone());
+        }
+
+        // Add profile rules
+        for profile in &self.active_profiles {
+            if let Some(checks) = &profile.checks {
+                for check in &checks.enable {
+                    enabled.insert(check.clone());
+                }
+            }
+        }
+
+        enabled
+    }
+
+    fn get_effective_disabled_checks(&self) -> std::collections::HashSet<String> {
+        let mut disabled = std::collections::HashSet::new();
+
+        // Add repo rules
+        for check in &self.rules.disabled_checks {
+            disabled.insert(check.clone());
+        }
+
+        // Add profile rules
+        for profile in &self.active_profiles {
+            if let Some(checks) = &profile.checks {
+                for check in &checks.disable {
+                    disabled.insert(check.clone());
+                }
+            }
+        }
+
+        disabled
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rules_mode_default() {
+        let config = RulesConfig::default();
+        assert_eq!(config.mode, RulesMode::Denylist);
+    }
+
+    #[test]
+    fn test_is_check_enabled_denylist() {
+        let mut config = Config::default();
+        config.rules.mode = RulesMode::Denylist;
+        // Default disabled_checks is empty
+
+        assert!(config.is_check_enabled("git_branch"));
+
+        // Disable a check
+        config.rules.disabled_checks.push("git_branch".to_string());
+        assert!(!config.is_check_enabled("git_branch"));
+        assert!(config.is_check_enabled("other_check"));
+    }
+
+    #[test]
+    fn test_is_check_enabled_allowlist() {
+        let mut config = Config::default();
+        config.rules.mode = RulesMode::Allowlist;
+
+        // Reset enabled checks for testing
+        config.rules.enabled_checks = vec!["git_branch".to_string()];
+
+        assert!(config.is_check_enabled("git_branch"));
+        assert!(!config.is_check_enabled("other_check"));
+    }
+
+    #[test]
+    fn test_profile_merging() {
+        let mut config = Config::default();
+        config.rules.mode = RulesMode::Allowlist;
+        config.rules.enabled_checks = vec!["repo_check".to_string()];
+
+        let profile = Profile {
+            metadata: ProfileMetadata {
+                name: "test".to_string(),
+                version: "1.0".to_string(),
+                scope: "test".to_string(),
+                updated: "today".to_string(),
+                description: "test".to_string(),
+            },
+            activation: ProfileActivation {
+                paths: vec![],
+                extensions: vec![],
+                branches: vec![],
+                indicators: vec![],
+                globs: vec![],
+                content: vec![],
+            },
+            enable: ProfileEnable {
+                domains: vec![],
+                plugins: vec![],
+            },
+            checks: Some(ProfileChecks {
+                enable: vec!["profile_check".to_string()],
+                disable: vec![],
+            }),
+            web_specific: None,
+            devops_specific: None,
+            structure: None,
+            extensions: None,
+        };
+
+        config.active_profiles.push(profile);
+
+        assert!(config.is_check_enabled("repo_check"));
+        assert!(config.is_check_enabled("profile_check"));
+        assert!(!config.is_check_enabled("other_check"));
+    }
+
+    #[test]
+    fn test_profile_merging_denylist() {
+        let mut config = Config::default();
+        config.rules.mode = RulesMode::Denylist;
+        config.rules.disabled_checks = vec!["repo_disabled".to_string()];
+
+        let profile = Profile {
+            metadata: ProfileMetadata {
+                name: "test".to_string(),
+                version: "1.0".to_string(),
+                scope: "test".to_string(),
+                updated: "today".to_string(),
+                description: "test".to_string(),
+            },
+            activation: ProfileActivation {
+                paths: vec![],
+                extensions: vec![],
+                branches: vec![],
+                indicators: vec![],
+                globs: vec![],
+                content: vec![],
+            },
+            enable: ProfileEnable {
+                domains: vec![],
+                plugins: vec![],
+            },
+            checks: Some(ProfileChecks {
+                enable: vec![],
+                disable: vec!["profile_disabled".to_string()],
+            }),
+            web_specific: None,
+            devops_specific: None,
+            structure: None,
+            extensions: None,
+        };
+
+        config.active_profiles.push(profile);
+
+        assert!(!config.is_check_enabled("repo_disabled"));
+        assert!(!config.is_check_enabled("profile_disabled"));
+        assert!(config.is_check_enabled("other_check"));
     }
 }

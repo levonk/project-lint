@@ -61,7 +61,7 @@ impl SecurityRuleSet {
             },
             PatternRule {
                 name: "suspicious_password_var".to_string(),
-                pattern: r"(password|secret|api_key|token|auth)\s*=\s*['\"][^'\"]{8,}['\"]".to_string(),
+                pattern: r#"(password|secret|api_key|token|auth)\s*=\s*['"][^'"]{8,}['"]"#.to_string(),
                 severity: "high".to_string(),
                 message_template: "⚠️  Suspicious variable assignment detected: {matched}. Review and move to environment variables.".to_string(),
                 fix_template: Some("os.getenv('CREDENTIAL_NAME')".to_string()),
@@ -222,7 +222,7 @@ impl SecurityScanner {
         // Determine file type to decide which detectors to run
         let file_name = file_path.file_name().unwrap_or_default().to_string_lossy();
         let is_c_file = file_name.ends_with(".c") || file_name.ends_with(".h");
-        let is_code_file = file_name.ends_with(".rs")
+        let _is_code_file = file_name.ends_with(".rs")
             || file_name.ends_with(".py")
             || file_name.ends_with(".js")
             || file_name.ends_with(".ts")

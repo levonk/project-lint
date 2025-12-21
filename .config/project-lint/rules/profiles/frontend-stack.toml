@@ -1,0 +1,16 @@
+[metadata]
+name = "frontend-stack"
+description = "Activates frontend + TypeScript stack checks when frontend indicators exist."
+version = "1.0.0"
+updated = "2025-12-19"
+scope = "frontend"
+
+[activation]
+indicators = ["package.json"]
+globs = ["**/*.tsx", "**/*.css", "**/*.scss", "**/*.mts", "**/*.cts"]
+
+[checks]
+enable = [
+  "typescript-adr-standards",
+  "node-monorepo-standards",
+]

@@ -1,0 +1,24 @@
+# Architecture and Feature Hygiene Practices
+name = "architecture-practices"
+description = "Enforce feature definition completeness and architectural hygiene."
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "feature_acceptance_criteria"
+pattern = "internal-docs/features/**/*.md"
+message = "Feature definition missing 'Acceptance Criteria' section."
+severity = "warning"
+check_content = true
+content_pattern = "Acceptance Criteria"
+condition = "must_contain"
+
+[[rules]]
+name = "feature_nfr"
+pattern = "internal-docs/features/**/*.md"
+message = "Feature definition missing 'Non-Functional Requirements' (or NFR) section."
+severity = "warning"
+check_content = true
+content_pattern = "Non-Functional Requirements"
+exception_pattern = "NFR"
+condition = "must_contain"

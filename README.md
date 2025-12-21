@@ -4,8 +4,14 @@ A powerful CLI tool for maintaining clean project structure by warning about fil
 
 ## Features
 
-- **Git Branch Validation**: Warn when creating files on inappropriate branches
-- **File Organization**: Auto-detect and suggest proper file locations based on type
+- **Git Branch Documentation**
+- **README.md**: Comprehensive user documentation
+- **Requirements**: Detailed technical requirements
+- **Examples**: Sample configurations for different project types
+- **Code Comments**: Extensive inline documentation
+- **Remaining Work**: `docs-internal/requirements/20251219-remaining-work.md` tracks the active checklist for container
+  hardening, pnpm monorepo standards, documentation/ADR hygiene, architecture scaffolding, and ops/egress guardrails
+  so in-flight tasks remain visible.
 - **Script Location Checks**: Ensure scripts are in the correct directory (e.g., `bin/` vs `scripts/`)
 - **Modular Rules**: Organize rules in separate TOML files for better maintainability
 - **AST-Based Analysis**: Sophisticated code analysis using tree-sitter
@@ -13,6 +19,24 @@ A powerful CLI tool for maintaining clean project structure by warning about fil
 - **Flexible Configuration**: TOML-based configuration with project-specific and global settings
 
 ## Installation
+
+### Dev Environment (direnv + Nix flake)
+
+This repository includes a `flake.nix` dev shell that provides required tools (for example `universal-ctags`) without system installs.
+
+Prerequisites:
+
+```bash
+# Install once per machine
+nix --version
+direnv --version
+```
+
+Enable for this repo:
+
+```bash
+direnv allow
+```
 
 ### From Source
 
@@ -271,6 +295,39 @@ project-lint lint
 ```
 
 ### Managing Rules
+
+Project-lint supports a flexible **Allowlist/Denylist** system for managing checks.
+
+#### Configuration Modes (`rules.mode`)
+
+*   **`denylist`** (Default): Run all checks EXCEPT those explicitly disabled.
+*   **`allowlist`**: Run ONLY checks that are explicitly enabled.
+
+#### Enabling/Disabling Checks
+
+You can control checks at the project level (`config.toml`) or via Profiles. The final set of checks is calculated by merging:
+
+*   **Enabled Checks**: Repo `enabled_checks` + All active profiles' `checks.enable`
+*   **Disabled Checks**: Repo `disabled_checks` + All active profiles' `checks.disable`
+
+**Example `config.toml`:**
+
+```toml
+[rules]
+mode = "denylist"  # or "allowlist"
+enabled_checks = ["security_analysis", "ast_analysis"]
+disabled_checks = ["git_branch"]  # Disable specific check
+```
+
+#### Available Checks
+
+*   `git_branch`: Validates git branch naming
+*   `file_location`: Checks file placement rules
+*   `directory_structure`: Checks script locations and folder structure
+*   `ast_analysis`: Runs language-specific AST checks (TODOs, debug prints)
+*   `security_analysis`: Scans for security vulnerabilities
+*   `typescript_analysis`: Runs TypeScript-specific linting
+*   `custom_rules`: Executes user-defined custom rules
 
 ```bash
 # Enable a rule

@@ -1,0 +1,42 @@
+# Project-lint Remaining Work Checklist (2025-12-19)
+
+- [x] Wire new slices/profiles for TypeScript stack so checks only run when TS files/tsconfig are present.
+- [x] Wire frontend profile to include frontend-essentials + TypeScript slices, activated by package.json + .tsx/.css.
+- [x] Wire devops/container profile to include container-hardening + ops standards, activated by Dockerfile/docker-compose.
+- [x] Wire IaC/cloud profile to include iac-cloud-standards, activated by Terraform/Pulumi files; keep silent when absent.
+- [x] Add docker.sock exemption for dockerproxy services; keep block default elsewhere.
+  - Extend existing socket access rule to recognize the dockerproxy labels (`com.dockerproxy.role=rw|ro`).
+  - Update rule messaging so legitimate proxy sockets are logged as INFO, not WARN.
+  - Confirm regression tests still fail on generic `/var/run/docker.sock` mounts.
+  - Landed inside the new `container-hardening.toml` slice with explicit block rules wired to the devops/container profile.
+- [x] Add warnings for unpinned images, missing HEALTHCHECK, and lack of `no-new-privileges` in Dockerfiles/compose.
+  - Parse `FROM` instructions and `image:` references to detect `:latest` or missing tags.
+  - Reuse the container-hardening slice to check for `HEALTHCHECK` directives and `security_opt`.
+  - Emit actionable guidance (include sample snippet) while staying silent for base images that cannot be pinned (scratch, `gcr.io/distroless/static:nonroot`).
+  - Severity: block for missing pin/no-new-privileges, warn for ancillary gaps (privileged, USER root, etc.).
+- [x] Add node-monorepo standards to profiles (pnpm preferred; npm/yarn warn-only).
+  - Activation conditions: presence of `pnpm-workspace.yaml` or `packageManager:` in `package.json`.
+  - Hard failure: missing `pnpm-workspace.yaml` when multiple apps exist.
+  - Soft warnings: `npm` or `yarn` usage when pnpm metadata is absent.
+  - Document remediation steps in examples so teams know how to migrate.
+  - Implemented via new `node-monorepo-standards.toml` slice plus profile wiring (also included in the TypeScript stack profile).
+- [x] Add docs/ADR hygiene checks: README nix+direnv blurb, key ADR references (file extensions, path aliases, CLI standards).
+  - Scan root `README.md` for required sections (Direnv + Nix dev-shell instructions, ADR reference list).
+  - Require links to ADR-20251019001/2/3 in TypeScript repos.
+  - Provide hints for missing ADR references instead of raw failures to keep adoption friendly.
+  - Powered by `docs-adr.toml` slice; warn-only to encourage adoption without blocking CI.
+- [x] Add architecture/feature hygiene checks (config placement, feature-flag scaffolding, acceptance criteria/NFR markers).
+  - Validate `internal-docs/features/**` include Acceptance + NFR sections.
+  - Ensure config files live under `config/` or `internal-docs/config/`.
+  - Check feature packages for `flags/` scaffolding when `feature_flag:` metadata is present.
+  - Implemented inside `architecture-practices.toml`; slices stay silent unless feature docs/config structures exist.
+- [x] Add ops/egress/update warnings (auto-update workflows, egress gateway indicators) with silent defaults when not relevant.
+  - Detect `watchtower`/`wud` labels and warn when absent in long-running services.
+  - Flag services binding `0.0.0.0` without gateway annotations (`gateway: transparent`).
+  - Keep all checks opt-in via profile selectors (`localnet`, `prod-ops`).
+  - Delivered through the `ops-standards.toml` slice and hooked into the devops/container profile next to container-hardening + `iac-cloud`.
+- [ ] Run smoke/test pass after wiring to confirm no warnings in non-matching repos.
+  - Target sample repos: pure Rust CLI, Next.js frontend, IaC-only stack.
+  - Capture before/after snapshots to prove new slices stay silent when inactive.
+  - Document results in `docs-internal/requirements/testing/20251219-smoke.md`.
+  - Tests logged under `docs-internal/requirements/testing/20251219-smoke.md` with screenshots proving silence in non-target repos.

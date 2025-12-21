@@ -45,4 +45,20 @@ When a tool is missing, the fix is to add it to `flake.nix` (not to install it g
 - Add `.envrc` and `flake.nix` to the repository.
 - Contributors run `direnv allow` once per clone.
 
+### Baseline Makefile targets
+
+To keep setup repeatable, ship a minimal `Makefile` alongside `.envrc` and `flake.nix` with these targets:
+
+- **bootstrap**: install Nix (if missing), install `direnv`, and run the flake to initialize the dev shell environment. (Non-destructive; idempotent.)
+- **clean**: remove temporary build artifacts and Nix/direnv caches created by this repo’s workflow (do not remove the global Nix store).
+- **build**: run the project’s primary build using the flake dev shell.
+- **run**: start the main application/service in the flake dev shell.
+- **deploy**: invoke the project’s deployment flow (document environment assumptions; keep non-prod by default).
+- **lint**: run linters/formatters/tests wired into the flake dev shell.
+- **help/usage**: print target list and short descriptions.
+
+Notes:
+- All targets execute under the flake-provided dev shell (no global tool assumptions).
+- `bootstrap` is the only target allowed to check/install `nix` and `direnv`; all other targets assume they’re present and `direnv` is allowed.
+
 <!-- vim: set ft=markdown: -->

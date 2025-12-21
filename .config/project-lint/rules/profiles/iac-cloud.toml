@@ -1,0 +1,14 @@
+[metadata]
+name = "iac-cloud"
+description = "Activates IaC/cloud checks when Terraform or Pulumi files exist."
+version = "1.0.0"
+updated = "2025-12-19"
+scope = "iac"
+
+[activation]
+globs = ["**/*.tf", "**/*.pulumi.*"]
+
+[checks]
+enable = [
+  "iac-cloud-standards",
+]

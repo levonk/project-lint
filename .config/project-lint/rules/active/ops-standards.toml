@@ -1,0 +1,32 @@
+# Operational standards and guardrails
+name = "ops-standards"
+description = "Operational hygiene: auto-update labels, egress guardrails, and binding safety."
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "missing_auto_update_label"
+pattern = "docker-compose*.yml"
+message = "Long-running service detected (restart policy) but missing auto-update label (watchtower). Ensure 'com.centurylinklabs.watchtower.enable' is set."
+severity = "info"
+check_content = true
+content_pattern = "restart:"
+exception_pattern = "watchtower"
+
+[[rules]]
+name = "exposed_binding_no_gateway"
+pattern = "docker-compose*.yml"
+message = "Service binds to 0.0.0.0. Ensure 'gateway: transparent' annotation is present if this is intentional egress."
+severity = "warning"
+check_content = true
+content_pattern = "0.0.0.0"
+exception_pattern = "gateway: transparent"
+
+[[rules]]
+name = "ensure_restart_policy"
+pattern = "docker-compose*.yml"
+message = "Service missing restart policy. Ensure 'restart: always' or 'restart: unless-stopped' for prod services."
+severity = "info"
+check_content = true
+content_pattern = "restart:"
+condition = "must_contain"

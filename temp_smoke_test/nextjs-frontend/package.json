@@ -1,0 +1,7 @@
+{
+  "name": "nextjs-frontend",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev"
+  }
+}

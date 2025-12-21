@@ -85,7 +85,7 @@ impl PatternDetector {
                         line: line_num + 1,
                         column,
                         pattern_name: rule.name.clone(),
-                        matched_text,
+                        matched_text: matched_text.clone(),
                         message,
                         severity: rule.severity.clone(),
                         fix,
@@ -124,7 +124,7 @@ impl PatternDetector {
                 if issue.line > 0 && issue.line <= lines.len() {
                     let line = lines[issue.line - 1];
                     let fixed_line = line.replace(&issue.matched_text, fix);
-                    
+
                     // Reconstruct content
                     let mut new_lines = lines.clone();
                     new_lines[issue.line - 1] = &fixed_line;
@@ -191,7 +191,7 @@ impl FunctionCallDetector {
                                 line: line_num + 1,
                                 column,
                                 pattern_name: rule.name.clone(),
-                                matched_text,
+                                matched_text: matched_text.clone(),
                                 message,
                                 severity: rule.severity.clone(),
                                 fix,
@@ -232,7 +232,7 @@ impl FunctionCallDetector {
                 if issue.line > 0 && issue.line <= lines.len() {
                     let line = lines[issue.line - 1];
                     let fixed_line = line.replace(&issue.matched_text, fix);
-                    
+
                     // Reconstruct content
                     let mut new_lines = lines.clone();
                     new_lines[issue.line - 1] = &fixed_line;
@@ -265,7 +265,7 @@ mod tests {
     fn test_pattern_detection() {
         let rules = vec![PatternRule {
             name: "test_pattern".to_string(),
-            pattern: r"password\s*=\s*['\"].*['\"]".to_string(),
+            pattern: r#"password\s*=\s*['"].*['"]"#.to_string(),
             severity: "critical".to_string(),
             message_template: "Found hardcoded password: {matched}".to_string(),
             fix_template: Some("password = os.getenv('PASSWORD')".to_string()),

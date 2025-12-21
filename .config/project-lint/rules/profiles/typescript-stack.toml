@@ -1,0 +1,23 @@
+[metadata]
+name = "typescript-stack"
+description = "Activates TypeScript stack checks (TS ADR standards, node monorepo standards) only when TypeScript indicators exist."
+version = "1.0.0"
+updated = "2025-12-19"
+scope = "typescript"
+
+[activation]
+indicators = ["package.json", "tsconfig.json"]
+globs = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"]
+
+[[activation.content]]
+matches = ["\"typescript\"", "\"@types/"]
+globs = ["package.json"]
+position = "any"
+
+[checks]
+# These names are logical groupings for enable/disable lists; rules remain warn-only.
+enable = [
+  "typescript-adr-standards",
+  "node-monorepo-standards",
+  "docs-adr-standards",
+]

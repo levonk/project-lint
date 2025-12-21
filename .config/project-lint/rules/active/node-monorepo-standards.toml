@@ -1,0 +1,55 @@
+# Node/Monorepo standards (warn-only)
+name = "node-monorepo-standards"
+description = "Warn on npm/yarn usage when pnpm is the standard, and ensure turborepo/vitest markers are present when applicable."
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "npm_script_usage"
+pattern = "package.json"
+message = "Scripts reference npm. Prefer pnpm per repo standards."
+severity = "warning"
+check_content = true
+content_pattern = "\"npm "
+
+[[rules]]
+name = "yarn_script_usage"
+pattern = "package.json"
+message = "Scripts reference yarn. Prefer pnpm per repo standards."
+severity = "warning"
+check_content = true
+content_pattern = "\"yarn "
+
+[[rules]]
+name = "block_npm_lockfile"
+pattern = "package-lock.json"
+message = "Found package-lock.json. This repo uses pnpm. Remove package-lock.json and use pnpm install."
+severity = "error"
+
+[[rules]]
+name = "block_yarn_lockfile"
+pattern = "yarn.lock"
+message = "Found yarn.lock. This repo uses pnpm. Remove yarn.lock and use pnpm install."
+severity = "error"
+
+[[rules]]
+name = "missing_turbo"
+pattern = "turbo.json"
+message = "turbo.json not found. If this is a monorepo, add turborepo config; otherwise ignore."
+severity = "warning"
+required = false
+
+[[rules]]
+name = "missing_vitest_config"
+pattern = "vitest.config.*"
+message = "Vitest config not found. If tests are present, add vitest.config.*; otherwise ignore."
+severity = "warning"
+required = false
+
+[[rules]]
+name = "missing_pnpm_workspace"
+pattern = "pnpm-workspace.yaml"
+message = "Monorepo detected (apps/ exists) but pnpm-workspace.yaml is missing."
+severity = "error"
+required = true
+required_if_path_exists = "apps"

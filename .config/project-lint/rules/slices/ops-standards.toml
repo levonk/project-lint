@@ -1,0 +1,29 @@
+# Ops and Egress standards
+# Enforces auto-update workflows and egress gateway usage
+
+[metadata]
+name = "ops-standards"
+version = "1.0.0"
+scope = "operations"
+updated = "2025-12-19"
+description = "Ops standards: warn on missing auto-update workflows or egress gateway indicators."
+
+[[rules]]
+name = "auto_update_workflow"
+pattern = ".github/workflows/*.yml"
+message = "No auto-update workflow found (watchtower/renovate/dependabot). Add one for long-running services."
+severity = "warning"
+check_content = true
+content_pattern = "schedule"
+condition = "must_contain"
+required_if_path_exists = "docker-compose.yml"
+
+[[rules]]
+name = "egress_gateway_indicator"
+pattern = "docker-compose*.yml"
+message = "Service binds 0.0.0.0 without gateway: transparent annotation. Ensure egress traffic goes through a gateway."
+severity = "warning"
+check_content = true
+content_pattern = "gateway: transparent"
+condition = "must_contain"
+required = false

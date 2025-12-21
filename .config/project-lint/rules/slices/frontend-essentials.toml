@@ -1,0 +1,33 @@
+# Frontend essentials and structure
+# Enforces basic frontend standards and structure
+
+[metadata]
+name = "frontend-essentials"
+version = "1.0.0"
+scope = "frontend"
+updated = "2025-12-19"
+description = "Frontend essentials: ensure CSS linting, proper structure, and script standards."
+
+[[rules]]
+name = "css_lint_config"
+pattern = ".stylelintrc*"
+message = "No stylelint config found. Ensure CSS/SCSS linting is configured."
+severity = "warning"
+required_if_path_exists = "**/*.css"
+
+[[rules]]
+name = "frontend_node_scripts"
+pattern = "package.json"
+message = "Frontend project missing 'start' or 'dev' script."
+severity = "warning"
+check_content = true
+content_pattern = "\"start\":"
+condition = "must_contain"
+required_if_path_exists = "src/App.tsx"
+
+[[rules]]
+name = "component_structure"
+pattern = "src/components"
+message = "Components directory missing. Organize UI code in src/components."
+severity = "info"
+required_if_path_exists = "src/App.tsx"

@@ -69,19 +69,21 @@ async fn run_lint_checks(project_path: &str, config: &Config) -> Result<()> {
     let mut issues = Vec::new();
 
     // Git branch checks
-    if let Some(git_info) = crate::git::get_git_info(project_path)? {
-        if config.git.warn_wrong_branch {
-            let branch_allowed = crate::git::check_branch_allowed(
-                &git_info,
-                &config.git.allowed_branches,
-                &config.git.forbidden_branches,
-            )?;
+    if config.is_check_enabled("git_branch") {
+        if let Some(git_info) = crate::git::get_git_info(project_path)? {
+            if config.git.warn_wrong_branch {
+                let branch_allowed = crate::git::check_branch_allowed(
+                    &git_info,
+                    &config.git.allowed_branches,
+                    &config.git.forbidden_branches,
+                )?;
 
-            if !branch_allowed {
-                issues.push(format!(
-                    "⚠️  Working on branch '{}' which may not be appropriate for file creation",
-                    git_info.current_branch
-                ));
+                if !branch_allowed {
+                    issues.push(format!(
+                        "⚠️  Working on branch '{}' which may not be appropriate for file creation",
+                        git_info.current_branch
+                    ));
+                }
             }
         }
     }
@@ -134,7 +136,7 @@ fn check_recent_file_changes(
                         }
 
                         // Check if file should be moved based on type
-                        if config.files.auto_move {
+                        if config.is_check_enabled("file_location") && config.files.auto_move {
                             for (pattern, target_dir) in &config.files.type_mappings {
                                 if matches_pattern(&file_name, pattern) {
                                     let current_dir =
@@ -154,7 +156,10 @@ fn check_recent_file_changes(
                         }
 
                         // Check for scripts in wrong location
-                        if config.directories.warn_scripts_location && is_script_file(&file_name) {
+                        if config.is_check_enabled("directory_structure")
+                            && config.directories.warn_scripts_location
+                            && is_script_file(&file_name)
+                        {
                             let scripts_dir = &config.directories.scripts_directory;
                             let current_dir =
                                 relative_path.parent().unwrap_or_else(|| Path::new(""));

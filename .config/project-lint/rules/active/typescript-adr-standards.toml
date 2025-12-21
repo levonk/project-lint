@@ -1,0 +1,31 @@
+# TypeScript ADR standards (warn-only) derived from ADR-20251019001/002/003
+name = "typescript-adr-standards"
+description = "Warn on ambiguous TS/JS extensions, ambiguous path aliases, and missing ESLint standard config"
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "ambiguous_ts_extension"
+pattern = "**/*.ts"
+message = "Ambiguous TypeScript extension '.ts' found. Prefer .mts (ESM) / .cts (CJS) or .test.ts for tests (ADR-20251019001)."
+severity = "warning"
+
+[[rules]]
+name = "ambiguous_js_extension"
+pattern = "**/*.js"
+message = "Ambiguous JavaScript extension '.js' found. Prefer .mjs (ESM) / .cjs (CJS) (ADR-20251019001)."
+severity = "warning"
+
+[[rules]]
+name = "ambiguous_path_alias"
+pattern = "tsconfig.*"
+message = "Ambiguous path alias '@/*' detected in tsconfig. Use explicit buckets (e.g., @/core/*, @/features/*) per ADR-20251019002."
+severity = "warning"
+check_content = true
+content_pattern = "\"@/*\""
+
+[[rules]]
+name = "eslint_standard_config"
+pattern = "eslint.config.*"
+message = "Ensure ESLint uses @job-aide/tools-lint-eslint-config (ADR-20251019003)."
+severity = "warning"

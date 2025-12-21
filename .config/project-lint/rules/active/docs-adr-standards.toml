@@ -1,0 +1,44 @@
+# Documentation and ADR hygiene standards
+name = "docs-adr-standards"
+description = "Enforce documentation hygiene: README requirements and ADR references."
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "readme_nix_direnv"
+pattern = "README.md"
+message = "README should mention Nix/Direnv setup instructions (standard dev env)."
+severity = "warning"
+check_content = true
+content_pattern = "direnv"
+condition = "must_contain"
+
+[[rules]]
+name = "ts_adr_extensions_link"
+pattern = "README.md"
+message = "TypeScript project detected. Please reference ADR-20251019001 (Explicit Extensions) in documentation."
+severity = "info"
+check_content = true
+content_pattern = "ADR-20251019001"
+condition = "must_contain"
+required_if_path_exists = "tsconfig.json"
+
+[[rules]]
+name = "ts_adr_aliases_link"
+pattern = "README.md"
+message = "TypeScript project detected. Please reference ADR-20251019002 (Path Aliases) in documentation."
+severity = "info"
+check_content = true
+content_pattern = "ADR-20251019002"
+condition = "must_contain"
+required_if_path_exists = "tsconfig.json"
+
+[[rules]]
+name = "ts_adr_eslint_link"
+pattern = "README.md"
+message = "TypeScript project detected. Please reference ADR-20251019003 (ESLint Config) in documentation."
+severity = "info"
+check_content = true
+content_pattern = "ADR-20251019003"
+condition = "must_contain"
+required_if_path_exists = "tsconfig.json"

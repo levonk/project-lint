@@ -35,8 +35,8 @@ impl RuntimeGuardsRuleSet {
 
         // Patterns for unguarded browser API access
         let patterns = vec![
-            (r"typeof\s+window\s*!==\s*['\"]undefined['\"]", "typeof window check"),
-            (r"typeof\s+document\s*!==\s*['\"]undefined['\"]", "typeof document check"),
+            (r#"typeof\s+window\s*!==\s*['"]undefined['"]"#, "typeof window check"),
+            (r#"typeof\s+document\s*!==\s*['"]undefined['"]"#, "typeof document check"),
             (r"window\.", "window access"),
             (r"document\.", "document access"),
             (r"navigator\.", "navigator access"),

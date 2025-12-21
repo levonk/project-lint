@@ -1,0 +1,79 @@
+# Container hardening and security standards
+# Handles docker socket access, privileges, and image security
+
+[metadata]
+name = "container-hardening"
+version = "1.0.0"
+scope = "container-security"
+updated = "2025-12-19"
+description = "Container hardening: block docker.sock mounts (except dockerproxy), warn on privileged and missing basics."
+
+[[rules]]
+name = "docker_sock_mount"
+pattern = "**/docker-compose*.yml"
+message = "Block docker.sock mounts except for dedicated dockerproxy containers (label com.dockerproxy.role)."
+severity = "warning"
+check_content = true
+content_pattern = "docker.sock"
+exception_pattern = "com.dockerproxy.role"
+
+[[rules]]
+name = "dockerfile_sock_mount"
+pattern = "**/Dockerfile*"
+message = "Dockerfile mounting /var/run/docker.sock detected. Avoid docker.sock mounts except for dockerproxy utilities."
+severity = "warning"
+check_content = true
+content_pattern = "docker.sock"
+exception_pattern = "dockerproxy"
+
+[[rules]]
+name = "privileged_container"
+pattern = "**/docker-compose*.yml"
+message = "Privileged container detected. Remove privileged=true unless absolutely required."
+severity = "warning"
+check_content = true
+content_pattern = "privileged: true"
+
+[[rules]]
+name = "missing_user_nonroot"
+pattern = "**/Dockerfile*"
+message = "Dockerfile missing non-root USER. Add USER app (or appropriate) after installs."
+severity = "warning"
+check_content = true
+content_pattern = "USER root"
+condition = "must_not_contain"
+
+[[rules]]
+name = "missing_healthcheck"
+pattern = "**/Dockerfile*"
+message = "Dockerfile missing HEALTHCHECK; add a health probe."
+severity = "warning"
+required = false
+check_content = true
+content_pattern = "HEALTHCHECK"
+condition = "must_contain"
+
+[[rules]]
+name = "unrestricted_capabilities"
+pattern = "**/docker-compose*.yml"
+message = "Ensure no-new-privileges/security options are set; add security_opt: [\"no-new-privileges:true\"]."
+severity = "warning"
+check_content = true
+content_pattern = "security_opt"
+condition = "must_contain"
+
+[[rules]]
+name = "compose_image_latest"
+pattern = "**/docker-compose*.yml"
+message = "Image uses ':latest'. Pin to a version or digest to ensure deterministic deploys."
+severity = "warning"
+check_content = true
+content_pattern = ":latest"
+
+[[rules]]
+name = "dockerfile_image_latest"
+pattern = "**/Dockerfile*"
+message = "Dockerfile base image uses ':latest'. Pin to a specific version or digest."
+severity = "warning"
+check_content = true
+content_pattern = ":latest"

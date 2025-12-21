@@ -1,0 +1,15 @@
+[metadata]
+name = "architecture"
+description = "Activates architecture and feature hygiene checks when feature documentation exists."
+version = "1.0.0"
+updated = "2025-12-19"
+scope = "general"
+
+[activation]
+indicators = ["internal-docs/features"]
+globs = ["internal-docs/features/**/*.md"]
+
+[checks]
+enable = [
+  "architecture-practices",
+]

@@ -1,0 +1,48 @@
+# Documentation and ADR hygiene standards
+# Enforces required documentation sections and ADR references
+
+[metadata]
+name = "docs-adr"
+version = "1.0.0"
+scope = "documentation"
+updated = "2025-12-19"
+description = "Docs/ADR hygiene: ensure README has Nix/Direnv instructions and ADR references are present where applicable."
+
+[[rules]]
+name = "readme_nix_direnv"
+pattern = "README.md"
+message = "README missing Nix/Direnv setup instructions (see ADR-20251219001)."
+severity = "warning"
+check_content = true
+content_pattern = "direnv allow"
+condition = "must_contain"
+
+[[rules]]
+name = "adr_typescript_extensions"
+pattern = "**/*.ts"
+message = "TypeScript files present but no reference to ADR-20251019001 found in docs."
+severity = "warning"
+check_content = true
+content_pattern = "ADR-20251019001"
+condition = "must_contain"
+required_if_path_exists = "README.md"
+
+[[rules]]
+name = "adr_path_aliases"
+pattern = "tsconfig.json"
+message = "tsconfig.json present but no reference to ADR-20251019002 (path aliases) found in docs."
+severity = "warning"
+check_content = true
+content_pattern = "ADR-20251019002"
+condition = "must_contain"
+required_if_path_exists = "README.md"
+
+[[rules]]
+name = "adr_cli_standards"
+pattern = "**/cli/*.rs"
+message = "CLI code detected but no reference to CLI standards ADR found in docs."
+severity = "warning"
+check_content = true
+content_pattern = "CLI Standards"
+condition = "must_contain"
+required_if_path_exists = "README.md"
