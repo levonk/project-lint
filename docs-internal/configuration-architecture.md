@@ -43,6 +43,31 @@ These are the **Enforced Rules** for the current execution.
 *   **`core.toml`**: The immutable system defaults shipped with the tool.
 *   **`config.toml`**: The user's local overrides (Project, XDG, or Home). This layer always takes precedence, allowing users to say "I know this is a web project, but I want to disable the CSS check."
 
+## Check Enablement Logic
+
+The system supports a flexible mechanism for enabling and disabling specific checks using a **Allowlist/Denylist** model with profile merging.
+
+### Modes
+The `rules.mode` configuration determines how checks are evaluated:
+
+*   **`denylist` (Default)**: All checks are enabled by default EXCEPT those explicitly disabled.
+*   **`allowlist`**: All checks are disabled by default EXCEPT those explicitly enabled.
+
+### Precedence and Merging
+The effective set of enabled/disabled checks is calculated by merging configuration from the repository-level `config.toml` and all active **Profiles**.
+
+1.  **Effective Enabled Checks** = Union of:
+    *   Repo `rules.enabled_checks`
+    *   All active profiles' `checks.enable` list
+
+2.  **Effective Disabled Checks** = Union of:
+    *   Repo `rules.disabled_checks`
+    *   All active profiles' `checks.disable` list
+
+### Evaluation
+*   In **Allowlist** mode: A check is run ONLY if it appears in the **Effective Enabled Checks** list.
+*   In **Denylist** mode: A check is run UNLESS it appears in the **Effective Disabled Checks** list.
+
 ## Hierarchy of Application
 
 1.  **Profile Detection**: The system scans the project to see which **Profiles** match the current context (e.g., "This is a Web + DevOps project").
