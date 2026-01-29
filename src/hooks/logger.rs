@@ -35,20 +35,20 @@ impl HookLogger {
                 .join("project-lint")
                 .join("logs")
         });
-        
+
         // Create log directory if it doesn't exist
         std::fs::create_dir_all(&log_dir)?;
-        
+
         // Create log file with current date
         let now = Utc::now();
         let log_file_name = format!("hook-log-{}.jsonl", now.format("%Y-%m-%d"));
         let log_file = log_dir.join(log_file_name);
-        
+
         info!("Hook logging to: {:?}", log_file);
-        
+
         Ok(Self { log_file })
     }
-    
+
     pub fn log_event(&self, event: &ProjectLintEvent, decision: &str, message: Option<&str>, duration_ms: Option<u64>) -> Result<()> {
         let entry = HookLogEntry {
             timestamp: Utc::now(),
@@ -62,9 +62,9 @@ impl HookLogger {
             message: message.map(|s| s.to_string()),
             duration_ms,
         };
-        
+
         let line = serde_json::to_string(&entry)? + "\n";
-        
+
         match OpenOptions::new()
             .create(true)
             .append(true)
@@ -81,18 +81,18 @@ impl HookLogger {
                 error!("Failed to open hook log file: {}", e);
             }
         }
-        
+
         Ok(())
     }
-    
+
     pub fn get_recent_logs(&self, limit: Option<usize>) -> Result<Vec<HookLogEntry>> {
         if !self.log_file.exists() {
             return Ok(Vec::new());
         }
-        
+
         let content = std::fs::read_to_string(&self.log_file)?;
         let lines: Vec<&str> = content.lines().collect();
-        
+
         let start_idx = if let Some(limit) = limit {
             if lines.len() > limit {
                 lines.len() - limit
@@ -102,7 +102,7 @@ impl HookLogger {
         } else {
             0
         };
-        
+
         let mut entries = Vec::new();
         for line in lines.iter().skip(start_idx) {
             if let Ok(entry) = serde_json::from_str::<HookLogEntry>(line) {
@@ -111,42 +111,42 @@ impl HookLogger {
                 warn!("Failed to parse log line: {}", line);
             }
         }
-        
+
         Ok(entries)
     }
-    
+
     pub fn get_stats(&self) -> Result<HookStats> {
         let entries = self.get_recent_logs(None)?;
-        
+
         let mut stats = HookStats::default();
-        
+
         for entry in entries {
             stats.total_events += 1;
-            
+
             // Count by event type
             *stats.event_counts.entry(entry.event_type.clone()).or_insert(0) += 1;
-            
+
             // Count by source
             *stats.source_counts.entry(entry.source.clone()).or_insert(0) += 1;
-            
+
             // Count by decision
             *stats.decision_counts.entry(entry.decision.clone()).or_insert(0) += 1;
-            
+
             // Track duration
             if let Some(duration) = entry.duration_ms {
                 stats.total_duration_ms += duration;
                 stats.event_count_with_duration += 1;
-                
+
                 if duration > stats.max_duration_ms {
                     stats.max_duration_ms = duration;
                 }
-                
+
                 if stats.min_duration_ms == 0 || duration < stats.min_duration_ms {
                     stats.min_duration_ms = duration;
                 }
             }
         }
-        
+
         Ok(stats)
     }
 }
@@ -209,4 +209,10 @@ pub fn get_hook_stats() -> Result<HookStats> {
             logger.get_stats()
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    mod logger_tests;
 }

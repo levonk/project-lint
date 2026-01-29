@@ -313,6 +313,6 @@ impl<'a> RuleEngine<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Import test module from separate file
     mod engine_tests;
+    mod logger_tests;
 }

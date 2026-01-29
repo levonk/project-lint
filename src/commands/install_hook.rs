@@ -10,11 +10,11 @@ pub struct InstallHookArgs {
     /// Target AI agent (windsurf, claude, cursor, generic)
     #[arg(long, default_value = "windsurf")]
     pub agent: String,
-    
+
     /// Installation directory (defaults to agent's default location)
     #[arg(short, long)]
     pub dir: Option<String>,
-    
+
     /// Force overwrite existing hooks
     #[arg(long)]
     pub force: bool,
@@ -22,7 +22,7 @@ pub struct InstallHookArgs {
 
 pub async fn run(args: InstallHookArgs) -> Result<()> {
     info!("Installing project-lint hook for {} agent", args.agent);
-    
+
     match args.agent.to_lowercase().as_str() {
         "windsurf" => install_windsurf_hook(&args).await?,
         "claude" => install_claude_hook(&args).await?,
@@ -33,7 +33,7 @@ pub async fn run(args: InstallHookArgs) -> Result<()> {
             return Err(anyhow::anyhow!("Unsupported agent: {}", args.agent));
         }
     }
-    
+
     info!("Hook installation completed successfully");
     Ok(())
 }
@@ -41,7 +41,7 @@ pub async fn run(args: InstallHookArgs) -> Result<()> {
 async fn install_windsurf_hook(args: &InstallHookArgs) -> Result<()> {
     let hook_dir = get_hook_dir(&args.dir, ".windsurf")?;
     fs::create_dir_all(&hook_dir)?;
-    
+
     let hook_content = format!(
         r#"#!/bin/bash
 # Windsurf hook for project-lint
@@ -62,11 +62,11 @@ exit $EXIT_CODE
 "#,
         env::current_exe()?.display()
     );
-    
+
     let hook_path = hook_dir.join("hook.sh");
     write_hook_file(&hook_path, &hook_content, args.force)?;
     make_executable(&hook_path)?;
-    
+
     // Create Windsurf configuration
     let config_content = r#"[hooks]
 pre_tool_use = "./hook.sh"
@@ -76,13 +76,13 @@ post_read_code = "./hook.sh"
 pre_write_code = "./hook.sh"
 post_write_code = "./hook.sh"
 "#;
-    
+
     let config_path = hook_dir.join("config.toml");
     if !config_path.exists() || args.force {
         fs::write(&config_path, config_content)?;
         info!("Created Windsurf hook configuration at {:?}", config_path);
     }
-    
+
     info!("Windsurf hook installed at {:?}", hook_path);
     Ok(())
 }
@@ -90,7 +90,7 @@ post_write_code = "./hook.sh"
 async fn install_claude_hook(args: &InstallHookArgs) -> Result<()> {
     let hook_dir = get_hook_dir(&args.dir, ".claude")?;
     fs::create_dir_all(&hook_dir)?;
-    
+
     let hook_content = format!(
         r#"#!/bin/bash
 # Claude Code hook for project-lint
@@ -111,11 +111,11 @@ exit $EXIT_CODE
 "#,
         env::current_exe()?.display()
     );
-    
+
     let hook_path = hook_dir.join("hook.sh");
     write_hook_file(&hook_path, &hook_content, args.force)?;
     make_executable(&hook_path)?;
-    
+
     info!("Claude Code hook installed at {:?}", hook_path);
     Ok(())
 }
@@ -123,7 +123,7 @@ exit $EXIT_CODE
 async fn install_cursor_hook(args: &InstallHookArgs) -> Result<()> {
     let hook_dir = get_hook_dir(&args.dir, ".cursor")?;
     fs::create_dir_all(&hook_dir)?;
-    
+
     let hook_content = format!(
         r#"#!/bin/bash
 # Cursor hook for project-lint
@@ -144,11 +144,11 @@ exit $EXIT_CODE
 "#,
         env::current_exe()?.display()
     );
-    
+
     let hook_path = hook_dir.join("hook.sh");
     write_hook_file(&hook_path, &hook_content, args.force)?;
     make_executable(&hook_path)?;
-    
+
     info!("Cursor hook installed at {:?}", hook_path);
     Ok(())
 }
@@ -156,7 +156,7 @@ exit $EXIT_CODE
 async fn install_generic_hook(args: &InstallHookArgs) -> Result<()> {
     let hook_dir = get_hook_dir(&args.dir, "hooks")?;
     fs::create_dir_all(&hook_dir)?;
-    
+
     let hook_content = format!(
         r#"#!/bin/bash
 # Generic AI agent hook for project-lint
@@ -177,11 +177,11 @@ exit $EXIT_CODE
 "#,
         env::current_exe()?.display()
     );
-    
+
     let hook_path = hook_dir.join("project-lint-hook.sh");
     write_hook_file(&hook_path, &hook_content, args.force)?;
     make_executable(&hook_path)?;
-    
+
     info!("Generic hook installed at {:?}", hook_path);
     Ok(())
 }
@@ -200,7 +200,7 @@ fn write_hook_file(path: &PathBuf, content: &str, force: bool) -> Result<()> {
         warn!("Hook file already exists at {:?}. Use --force to overwrite.", path);
         return Ok(());
     }
-    
+
     fs::write(path, content)?;
     Ok(())
 }
@@ -214,4 +214,10 @@ fn make_executable(path: &PathBuf) -> Result<()> {
         fs::set_permissions(path, perms)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    mod install_hook_tests;
 }
