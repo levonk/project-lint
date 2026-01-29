@@ -1,13 +1,16 @@
 use clap::{Parser, Subcommand};
-use colored::Colorize;
-use tracing::{error, info, Level};
+use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 mod ast;
 mod commands;
 mod config;
 mod config_validation;
+mod dependency_checker;
+mod dependency_version_checker;
 mod detection;
+mod hooks;
+mod file_naming;
 mod git;
 mod markdown_frontmatter;
 mod package_organization;
@@ -20,7 +23,6 @@ mod utils;
 
 use crate::utils::Result;
 use commands::{init, lint, watch};
-use config::Config;
 
 #[derive(Parser)]
 #[command(
@@ -64,6 +66,8 @@ enum Commands {
         #[arg(short, long)]
         path: Option<String>,
     },
+    /// Run as a hook handler for IDE events
+    Hook(commands::hook::HookArgs),
 }
 
 #[tokio::main]
@@ -77,7 +81,7 @@ async fn main() -> Result<()> {
         Level::INFO
     };
 
-    let subscriber = FmtSubscriber::builder()
+    let _subscriber = FmtSubscriber::builder()
         .with_max_level(level)
         .with_target(false)
         .with_thread_ids(false)
@@ -97,6 +101,9 @@ async fn main() -> Result<()> {
         Commands::Watch { path } => {
             let project_path = path.unwrap_or_else(|| ".".to_string());
             watch::run(&project_path).await?;
+        }
+        Commands::Hook(args) => {
+            commands::hook::run(args).await?;
         }
     }
 

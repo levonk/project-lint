@@ -1,4 +1,4 @@
-use crate::utils::Result;
+use crate::utils::{Result, matches_pattern};
 use colored::Colorize;
 use std::path::Path;
 use tracing::{debug, info, warn};
@@ -7,10 +7,12 @@ use glob::Pattern;
 
 use crate::ast::{ASTAnalyzer, ASTIssue};
 use crate::config::{Config, ModularRule};
+use crate::dependency_version_checker::DependencyVersionChecker;
 use crate::git::{check_branch_allowed, get_git_info};
 use crate::profiles;
 use crate::security::SecurityScanner;
 use crate::typescript::TypeScriptScanner;
+use crate::file_naming::FileNamingScanner;
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
     info!("Running linting checks on project: {}", project_path);
@@ -39,7 +41,7 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
     }
 
     // Determine active profiles
-    let active_profiles = profiles::get_active_profiles(project_path_obj, &config.active_profiles)?;
+    let active_profiles = profiles::get_active_profiles(project_path_obj, &config.active_profiles, None)?;
     if !active_profiles.is_empty() {
         info!(
             "Active profiles: {}",
@@ -56,6 +58,12 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
         config.active_profiles = active_profiles;
     } else {
         debug!("No specific profiles activated");
+    }
+
+    // Perform file naming analysis
+    if config.is_check_enabled("file_naming") {
+        debug!("Performing file naming analysis");
+        perform_file_naming_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
     }
 
     // Initialize AST analyzer
@@ -85,6 +93,12 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
     if config.is_check_enabled("typescript_analysis") {
         debug!("Performing TypeScript analysis");
         perform_typescript_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
+    }
+
+    // Perform dependency version checking
+    if config.is_check_enabled("dependency_versions") {
+        debug!("Performing dependency version analysis");
+        perform_dependency_analysis(project_path, &mut issues, apply_fixes, dry_run).await?;
     }
 
     // Legacy checks (for backward compatibility)
@@ -125,6 +139,58 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
         }
         println!();
         println!("{}", format!("Found {} issue(s)", issues.len()).yellow());
+    }
+
+    Ok(())
+}
+
+fn perform_file_naming_analysis(
+    project_path: &str,
+    issues: &mut Vec<String>,
+    apply_fixes: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let scanner = FileNamingScanner::new();
+
+    match scanner.scan(project_path) {
+        Ok(detected_issues) => {
+            for issue in &detected_issues {
+                let severity_icon = match issue.severity.as_str() {
+                    "error" => "❌",
+                    "warning" => "⚠️",
+                    "info" => "ℹ️",
+                    _ => "⚠️",
+                };
+
+                issues.push(format!(
+                    "{} [Naming] {} (at {})",
+                    severity_icon,
+                    issue.message,
+                    issue.path.display()
+                ));
+            }
+
+            // Apply fixes if requested
+            if (apply_fixes || dry_run) && !detected_issues.is_empty() {
+                match scanner.apply_fixes(&detected_issues, dry_run) {
+                    Ok(fixes) => {
+                        if fixes > 0 {
+                            if dry_run {
+                                info!("📋 Would rename {} files/directories", fixes);
+                            } else {
+                                info!("✅ Renamed {} files/directories", fixes);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to apply naming fixes: {}", e);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            debug!("Error scanning for file naming issues: {}", e);
+        }
     }
 
     Ok(())
@@ -606,18 +672,6 @@ fn should_ignore_path(path: &Path, ignored_patterns: &[String]) -> bool {
     })
 }
 
-fn matches_pattern(file_name: &str, pattern: &str) -> bool {
-    if pattern.starts_with('*') && pattern.ends_with('*') {
-        file_name.contains(&pattern[1..pattern.len() - 1])
-    } else if pattern.starts_with('*') {
-        file_name.ends_with(&pattern[1..])
-    } else if pattern.ends_with('*') {
-        file_name.starts_with(&pattern[..pattern.len() - 1])
-    } else {
-        file_name == pattern
-    }
-}
-
 fn perform_security_analysis(
     project_path: &str,
     issues: &mut Vec<String>,
@@ -824,4 +878,55 @@ fn perform_typescript_analysis(
 fn is_script_file(file_name: &str) -> bool {
     let script_extensions = [".sh", ".py", ".js", ".ts", ".rb", ".pl", ".php"];
     script_extensions.iter().any(|ext| file_name.ends_with(ext))
+}
+
+async fn perform_dependency_analysis(
+    project_path: &str,
+    issues: &mut Vec<String>,
+    apply_fixes: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let checker = DependencyVersionChecker::new();
+
+    match checker.scan(project_path).await {
+        Ok(detected_issues) => {
+            for issue in &detected_issues {
+                let severity_icon = match issue.severity {
+                    crate::dependency_version_checker::Severity::Error => "🔴",
+                    crate::dependency_version_checker::Severity::Warning => "🟡",
+                    crate::dependency_version_checker::Severity::Info => "🟢",
+                };
+
+                issues.push(format!(
+                    "{} [Dependencies] {} ({})",
+                    severity_icon,
+                    issue.message,
+                    issue.file_path
+                ));
+            }
+
+            // Apply fixes if requested
+            if (apply_fixes || dry_run) && !detected_issues.is_empty() {
+                match checker.apply_fixes(&detected_issues, dry_run).await {
+                    Ok(fixes) => {
+                        if fixes > 0 {
+                            if dry_run {
+                                info!("📋 Would update {} dependencies", fixes);
+                            } else {
+                                info!("✅ Updated {} dependencies", fixes);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to apply dependency fixes: {}", e);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            debug!("Error checking dependency versions: {}", e);
+        }
+    }
+
+    Ok(())
 }

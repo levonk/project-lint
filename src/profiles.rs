@@ -1,4 +1,5 @@
 use crate::config::{MatchPosition, Profile, ProfileActivation};
+use crate::hooks::ProjectLintEvent;
 use crate::utils::Result;
 use glob::glob;
 use std::fs::File;
@@ -8,13 +9,62 @@ use tracing::{debug, warn};
 
 const HEADER_SIZE: usize = 1024;
 
-pub fn is_profile_active(project_path: &Path, profile: &Profile) -> Result<bool> {
+pub fn is_profile_active(
+    project_path: &Path,
+    profile: &Profile,
+    event: Option<&ProjectLintEvent>,
+) -> Result<bool> {
     let activation = &profile.activation;
+
+    // Check event-based activation
+    if let Some(event) = event {
+        for event_trigger in &activation.events {
+            // Match against unified event type (string representation)
+            let event_type_str = serde_json::to_string(&event.event_type)?
+                .trim_matches('"')
+                .to_string();
+
+            if event_trigger == &event_type_str || event_trigger == "all" {
+                debug!(
+                    "Profile '{}' activated by event: {}",
+                    profile.metadata.name, event_type_str
+                );
+                return Ok(true);
+            }
+
+            // Also check for IDE-specific events if specified
+            if let Some(original_payload) = &event.context.original_payload {
+                // Windsurf specific
+                if let Some(action_name) = original_payload["agent_action_name"].as_str() {
+                    if event_trigger == action_name {
+                        debug!(
+                            "Profile '{}' activated by Windsurf event: {}",
+                            profile.metadata.name, action_name
+                        );
+                        return Ok(true);
+                    }
+                }
+                // Claude specific
+                if let Some(hook_event_name) = original_payload["hook_event_name"].as_str() {
+                    if event_trigger == hook_event_name {
+                        debug!(
+                            "Profile '{}' activated by Claude event: {}",
+                            profile.metadata.name, hook_event_name
+                        );
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+    }
 
     // Check indicators (files that must exist)
     for indicator in &activation.indicators {
         if project_path.join(indicator).exists() {
-            debug!("Profile '{}' activated by indicator: {}", profile.metadata.name, indicator);
+            debug!(
+                "Profile '{}' activated by indicator: {}",
+                profile.metadata.name, indicator
+            );
             return Ok(true);
         }
     }
@@ -22,7 +72,10 @@ pub fn is_profile_active(project_path: &Path, profile: &Profile) -> Result<bool>
     // Check paths (directories that must exist)
     for path in &activation.paths {
         if project_path.join(path).exists() {
-            debug!("Profile '{}' activated by path: {}", profile.metadata.name, path);
+            debug!(
+                "Profile '{}' activated by path: {}",
+                profile.metadata.name, path
+            );
             return Ok(true);
         }
     }
@@ -31,12 +84,15 @@ pub fn is_profile_active(project_path: &Path, profile: &Profile) -> Result<bool>
     for pattern in &activation.globs {
         let full_pattern = project_path.join(pattern);
         let pattern_str = full_pattern.to_string_lossy();
-        
+
         match glob(&pattern_str) {
             Ok(paths) => {
                 // If we find at least one match, the profile is active
                 if paths.count() > 0 {
-                    debug!("Profile '{}' activated by glob: {}", profile.metadata.name, pattern);
+                    debug!(
+                        "Profile '{}' activated by glob: {}",
+                        profile.metadata.name, pattern
+                    );
                     return Ok(true);
                 }
             }
@@ -63,7 +119,10 @@ pub fn is_profile_active(project_path: &Path, profile: &Profile) -> Result<bool>
                     if let Ok(path) = path_result {
                         if path.is_file() {
                             if check_file_content(&path, &trigger.matches, &trigger.position) {
-                                debug!("Profile '{}' activated by content match in: {:?}", profile.metadata.name, path);
+                                debug!(
+                                    "Profile '{}' activated by content match in: {:?}",
+                                    profile.metadata.name, path
+                                );
                                 return Ok(true);
                             }
                         }
@@ -73,16 +132,6 @@ pub fn is_profile_active(project_path: &Path, profile: &Profile) -> Result<bool>
         }
     }
 
-    // Note: Git branch checking requires GitInfo which is not passed here.
-    // This function focuses on file-system based activation.
-    
-    // Backward compatibility for extensions (if still used)
-    if !activation.extensions.is_empty() {
-        // This would require walking the directory to check for extensions, 
-        // which might be expensive. For now, we rely on globs.
-        // Use globs instead of extensions in profiles.
-    }
-
     Ok(false)
 }
 
@@ -90,7 +139,7 @@ fn check_file_content(path: &Path, matches: &[String], position: &MatchPosition)
     match File::open(path) {
         Ok(mut file) => {
             let mut buffer = Vec::new();
-            
+
             if *position == MatchPosition::Header {
                 let mut head_buf = [0u8; HEADER_SIZE];
                 match file.read(&mut head_buf) {
@@ -121,11 +170,15 @@ fn check_file_content(path: &Path, matches: &[String], position: &MatchPosition)
     }
 }
 
-pub fn get_active_profiles(project_path: &Path, available_profiles: &[Profile]) -> Result<Vec<Profile>> {
+pub fn get_active_profiles(
+    project_path: &Path,
+    available_profiles: &[Profile],
+    event: Option<&ProjectLintEvent>,
+) -> Result<Vec<Profile>> {
     let mut active_profiles = Vec::new();
 
     for profile in available_profiles {
-        if is_profile_active(project_path, profile)? {
+        if is_profile_active(project_path, profile, event)? {
             active_profiles.push(profile.clone());
         }
     }

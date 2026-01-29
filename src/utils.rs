@@ -63,3 +63,15 @@ pub fn get_config_dir() -> Result<std::path::PathBuf> {
         dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
     Ok(home.join(".config").join("project-lint"))
 }
+
+pub fn matches_pattern(file_name: &str, pattern: &str) -> bool {
+    if pattern.starts_with('*') && pattern.ends_with('*') {
+        file_name.contains(&pattern[1..pattern.len() - 1])
+    } else if pattern.starts_with('*') {
+        file_name.ends_with(&pattern[1..])
+    } else if pattern.ends_with('*') {
+        file_name.starts_with(&pattern[..pattern.len() - 1])
+    } else {
+        file_name == pattern
+    }
+}

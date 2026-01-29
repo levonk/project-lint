@@ -117,6 +117,8 @@ pub struct ProfileActivation {
     pub globs: Vec<String>,
     #[serde(default)]
     pub content: Vec<ContentTrigger>,
+    #[serde(default)]
+    pub events: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -417,6 +419,8 @@ pub struct CustomRule {
     pub required: bool,
     #[serde(default)]
     pub required_if_path_exists: Option<String>,
+    #[serde(default)]
+    pub triggers: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -425,6 +429,8 @@ pub struct ModularRule {
     pub description: String,
     pub enabled: bool,
     pub severity: RuleSeverity,
+    #[serde(default)]
+    pub triggers: Vec<String>,
     #[serde(default)]
     pub git: Option<GitRuleConfig>,
     #[serde(default)]
@@ -599,9 +605,11 @@ impl Default for RulesConfig {
                 "git_branch".to_string(),
                 "file_location".to_string(),
                 "directory_structure".to_string(),
+                "file_naming".to_string(),
                 "ast_analysis".to_string(),
                 "security_analysis".to_string(),
                 "typescript_analysis".to_string(),
+                "dependency_versions".to_string(),
                 "custom_rules".to_string(),
             ],
             disabled_checks: vec![],
@@ -917,6 +925,7 @@ mod tests {
             checks: Some(ProfileChecks {
                 enable: vec!["profile_check".to_string()],
                 disable: vec![],
+                slices: None,
             }),
             web_specific: None,
             devops_specific: None,
@@ -960,6 +969,7 @@ mod tests {
             checks: Some(ProfileChecks {
                 enable: vec![],
                 disable: vec!["profile_disabled".to_string()],
+                slices: None,
             }),
             web_specific: None,
             devops_specific: None,

@@ -1,0 +1,33 @@
+name = "dependency-versions"
+description = "Check for outdated dependencies in package manager files"
+enabled = true
+severity = "warning"
+
+[dependency_checker]
+# Check for outdated dependencies
+check_outdated = true
+# Warn about major version differences
+warn_major_versions = true
+# Warn about minor version differences  
+warn_minor_versions = true
+# Don't warn about patch versions (can be noisy)
+warn_patch_versions = false
+
+# Package managers to check
+package_managers = ["npm", "cargo", "pip", "poetry"]
+
+[ignored_patterns]
+# Skip dependency checking in these directories
+"node_modules/" = true
+"target/" = true
+".git/" = true
+"vendor/" = true
+".venv/" = true
+"venv/" = true
+"env/" = true
+
+[messages]
+outdated_major = "🔴 [MAJOR] {package} is significantly outdated ({current} -> {latest}) via {manager} ({file})"
+outdated_minor = "🟡 [minor] {package} has a minor update available ({current} -> {latest}) via {manager} ({file})"
+outdated_patch = "🟢 [patch] {package} has a patch update available ({current} -> {latest}) via {manager} ({file})"
+check_failed = "⚠️ Failed to check dependencies for {manager}: {error}"
