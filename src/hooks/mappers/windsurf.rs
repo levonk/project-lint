@@ -86,19 +86,46 @@ impl EventMapper for WindsurfMapper {
     }
 
     fn format_response(&self, result: HookResult) -> Result<String> {
-        // Windsurf primarily uses exit codes for blocking (exit 2).
-        // It doesn't strictly define a JSON output schema for modification in the docs I read,
-        // except implicitly it might log stdout.
-        // For now, we'll return an empty string or log message. The runner will handle exit code.
+        // Windsurf can accept JSON responses for tool input modification
+        let mut response = serde_json::Map::new();
 
-        if result.decision == Decision::Deny {
-            // The command runner should convert this to exit code 2
-            if let Some(msg) = result.message {
-                eprintln!("{}", msg); // Print reason to stderr
+        match result.decision {
+            Decision::Deny => {
+                // Block the action with exit code 2
+                if let Some(msg) = result.message {
+                    eprintln!("{}", msg); // Print reason to stderr
+                }
+                response.insert("decision".to_string(), serde_json::Value::String("deny".to_string()));
             }
-            return Ok("".to_string());
+            Decision::Warn => {
+                // Allow but show warning
+                if let Some(msg) = result.message {
+                    eprintln!("⚠️  {}", msg);
+                }
+                response.insert("decision".to_string(), serde_json::Value::String("warn".to_string()));
+
+                // If there's a modified input, include it for command rewriting
+                if let Some(modified_input) = result.modified_input {
+                    response.insert("modified_input".to_string(), modified_input);
+                }
+            }
+            Decision::Ask => {
+                // Request user confirmation
+                if let Some(msg) = result.message {
+                    println!("❓ {}", msg);
+                }
+                response.insert("decision".to_string(), serde_json::Value::String("ask".to_string()));
+            }
+            Decision::Allow => {
+                response.insert("decision".to_string(), serde_json::Value::String("allow".to_string()));
+            }
         }
 
-        Ok("".to_string())
+        // Return JSON response if we have meaningful content
+        if !response.is_empty() {
+            Ok(serde_json::to_string(&response)?)
+        } else {
+            Ok("".to_string())
+        }
     }
 }

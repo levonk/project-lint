@@ -39,6 +39,12 @@ tokio = { version = "1", features = ["full"] }
 # Terminal output
 colored = "2.0"
 indicatif = "0.17"
+ratatui = "0.28"
+crossterm = "0.28"
+
+# TUI widgets
+tui-textarea = "0.6"
+tui-widget-list = "0.12"
 
 # Path and environment
 dirs = "5.0"

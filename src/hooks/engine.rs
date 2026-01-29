@@ -1,7 +1,10 @@
 use crate::hooks::{ProjectLintEvent, HookResult, Decision};
 use crate::config::{Config, CustomRule, ModularRule, RuleSeverity};
 use crate::utils::Result;
-use tracing::{debug, info};
+use std::path::Path;
+use std::fs;
+use serde_json;
+use tracing::{debug, info, warn};
 
 pub struct RuleEngine<'a> {
     config: &'a Config,
@@ -49,6 +52,8 @@ impl<'a> RuleEngine<'a> {
             let has_errors = issues.iter().any(|i| matches!(i.severity, RuleSeverity::Error));
 
             let mut message = String::from("Project Lint violations detected:\n");
+            let mut modified_input: Option<serde_json::Value> = None;
+
             for issue in &issues {
                 let icon = match issue.severity {
                     RuleSeverity::Error => "❌",
@@ -56,9 +61,34 @@ impl<'a> RuleEngine<'a> {
                     RuleSeverity::Info => "ℹ️",
                 };
                 message.push_str(&format!("{} {}: {}\n", icon, issue.name, issue.message));
+
+                // Check if this issue includes a command rewrite suggestion
+                if issue.name == "pnpm-workspace-enforcer" {
+                    if let Some(event) = event {
+                        if let Some(tool_input) = &event.context.tool_input {
+                            if let Some(command_str) = self.extract_command_from_input(tool_input) {
+                                if command_str.starts_with("npm ") {
+                                    let rewritten_command = command_str.replace("npm ", "pnpm ");
+                                    // Create modified input with the rewritten command
+                                    if let Some(input_field) = tool_input.get("input") {
+                                        let mut new_input = tool_input.clone();
+                                        new_input["input"] = serde_json::Value::String(rewritten_command);
+                                        modified_input = Some(new_input);
+                                    } else if let Some(tool_input_field) = tool_input.get("tool_input") {
+                                        let mut new_input = tool_input.clone();
+                                        new_input["tool_input"] = serde_json::Value::String(rewritten_command);
+                                        modified_input = Some(new_input);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             result.message = Some(message);
+            result.modified_input = modified_input;
+
             if has_errors {
                 result.decision = Decision::Deny;
             } else {
@@ -122,6 +152,11 @@ impl<'a> RuleEngine<'a> {
             return Ok(None);
         }
 
+        // Special handling for pnpm enforcement
+        if rule.name == "pnpm-workspace-enforcer" {
+            return self.evaluate_pnpm_rule(rule, event);
+        }
+
         // Check content patterns against user prompt or file content if available
         if rule.check_content {
             let mut content_to_check = String::new();
@@ -164,4 +199,120 @@ pub struct DetectedIssue {
     pub name: String,
     pub message: String,
     pub severity: RuleSeverity,
+}
+
+impl<'a> RuleEngine<'a> {
+    /// Evaluate pnpm workspace enforcement rule
+    fn evaluate_pnpm_rule(&self, rule: &CustomRule, event: &ProjectLintEvent) -> Result<Option<DetectedIssue>> {
+        // Only check on PreToolUse events
+        if event.event_type != crate::hooks::EventType::PreToolUse {
+            return Ok(None);
+        }
+
+        // Get the current working directory
+        let cwd = event.cwd.as_ref()
+            .or_else(|| std::env::current_dir().ok())
+            .map(|p| p.as_path())
+            .unwrap_or(Path::new("."));
+
+        // Check if this is a pnpm workspace
+        if !self.is_pnpm_workspace(cwd)? {
+            debug!("Not a pnpm workspace, skipping pnpm enforcement");
+            return Ok(None);
+        }
+
+        // Check tool input for npm commands
+        if let Some(tool_input) = &event.context.tool_input {
+            if let Some(command_str) = self.extract_command_from_input(tool_input) {
+                if command_str.starts_with("npm ") {
+                    info!("Detected npm command in pnpm workspace: {}", command_str);
+
+                    let rewritten_command = command_str.replace("npm ", "pnpm ");
+
+                    return Ok(Some(DetectedIssue {
+                        name: rule.name.clone(),
+                        message: format!(
+                            "🚫 This project uses pnpm (detected in package.json).\n\nFound: {}\nSuggested: {}\n\nThe command has been automatically rewritten to use pnpm.",
+                            command_str, rewritten_command
+                        ),
+                        severity: rule.severity.clone(),
+                    }));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Check if the current directory is a pnpm workspace
+    fn is_pnpm_workspace(&self, project_path: &Path) -> Result<bool> {
+        let package_json_path = project_path.join("package.json");
+
+        if !package_json_path.exists() {
+            return Ok(false);
+        }
+
+        let content = fs::read_to_string(package_json_path)?;
+
+        // Parse package.json
+        if let Ok(package_json) = serde_json::from_str::<serde_json::Value>(&content) {
+            // Check for pnpm packageManager field
+            if let Some(package_manager) = package_json.get("packageManager") {
+                if let Some(pm_str) = package_manager.as_str() {
+                    if pm_str.starts_with("pnpm") {
+                        info!("Detected pnpm workspace via packageManager: {}", pm_str);
+                        return Ok(true);
+                    }
+                }
+            }
+
+            // Check for pnpm-workspace.yaml
+            if project_path.join("pnpm-workspace.yaml").exists()
+                || project_path.join("pnpm-workspace.yml").exists() {
+                info!("Detected pnpm workspace via pnpm-workspace.yaml");
+                return Ok(true);
+            }
+
+            // Check for pnpm-lock.yaml
+            if project_path.join("pnpm-lock.yaml").exists() {
+                info!("Detected pnpm workspace via pnpm-lock.yaml");
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Extract command string from tool input
+    fn extract_command_from_input(&self, tool_input: &serde_json::Value) -> Option<String> {
+        // Handle different IDE formats
+
+        // Windsurf format
+        if let Some(input) = tool_input.get("input").and_then(|i| i.as_str()) {
+            return Some(input.to_string());
+        }
+
+        // Claude format
+        if let Some(tool_input) = tool_input.get("tool_input").and_then(|i| i.as_str()) {
+            return Some(tool_input.to_string());
+        }
+
+        // Generic format - try common fields
+        for field in ["command", "cmd", "input", "tool_input"] {
+            if let Some(value) = tool_input.get(field) {
+                if let Some(s) = value.as_str() {
+                    return Some(s.to_string());
+                }
+            }
+        }
+
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // Import test module from separate file
+    mod engine_tests;
 }

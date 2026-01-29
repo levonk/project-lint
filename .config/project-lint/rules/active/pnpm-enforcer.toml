@@ -1,0 +1,19 @@
+# Pnpm Workspace Enforcement Rule
+# This rule detects and enforces the use of pnpm in pnpm workspaces
+
+[[rules.custom_rules]]
+name = "pnpm-workspace-enforcer"
+pattern = "*"
+triggers = ["pre_tool_use"]
+check_content = false
+severity = "warning"
+message = "This project uses pnpm. Please use 'pnpm' instead of 'npm' commands."
+
+# The rule will automatically:
+# 1. Detect if the current project is a pnpm workspace by checking:
+#    - package.json field "packageManager" starting with "pnpm"
+#    - Presence of pnpm-workspace.yaml/yml
+#    - Presence of pnpm-lock.yaml
+# 2. Intercept npm commands in PreToolUse events
+# 3. Show a helpful message with the rewritten command
+# 4. Only activates in pnpm workspaces (no false positives in npm projects)
