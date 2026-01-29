@@ -1,11 +1,12 @@
 use crate::utils::Result;
-use crate::hooks::{EventMapper, HookResult, Decision, RuleEngine, mappers::{WindsurfMapper, ClaudeMapper}};
+use crate::hooks::{EventMapper, HookResult, Decision, mappers::{WindsurfMapper, ClaudeMapper}, initialize_global_logger, log_hook_event};
 use crate::config::Config;
 use crate::profiles;
 use clap::Args;
 use std::io::{self, Read};
 use std::path::Path;
 use tracing::{debug, error, info, warn};
+use std::time::Instant;
 
 #[derive(Args)]
 pub struct HookArgs {
@@ -19,6 +20,10 @@ pub struct HookArgs {
 }
 
 pub async fn run(args: HookArgs) -> Result<()> {
+    // Initialize hook logger
+    initialize_global_logger(None)?;
+
+    let start_time = Instant::now();
     // Read stdin
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer)?;
@@ -70,6 +75,15 @@ pub async fn run(args: HookArgs) -> Result<()> {
     let output = mapper.format_response(result.clone())?;
     if !output.is_empty() {
         println!("{}", output);
+    }
+
+    // Log the hook event
+    let duration_ms = start_time.elapsed().as_millis() as u64;
+    let decision_str = format!("{:?}", result.decision);
+    let message_str = result.message.as_deref();
+
+    if let Err(e) = log_hook_event(&event, &decision_str, message_str, Some(duration_ms)) {
+        error!("Failed to log hook event: {}", e);
     }
 
     // Handle blocking (exit code 2 is standard for blocking in many agent hook systems)

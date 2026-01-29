@@ -114,5 +114,7 @@ pub trait EventMapper {
 
 pub mod mappers;
 pub mod engine;
+pub mod logger;
 
 pub use engine::RuleEngine;
+pub use logger::{HookLogger, HookStats, initialize_global_logger, log_hook_event, get_hook_stats};

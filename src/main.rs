@@ -22,7 +22,7 @@ mod typescript;
 mod utils;
 
 use crate::utils::Result;
-use commands::{init, lint, watch};
+use commands::{init, lint, watch, configure, install_hook, logs};
 
 #[derive(Parser)]
 #[command(
@@ -66,6 +66,12 @@ enum Commands {
         #[arg(short, long)]
         path: Option<String>,
     },
+    /// Configure project-lint settings with a TUI interface
+    Configure,
+    /// Install hooks for AI coding agents
+    InstallHook(commands::install_hook::InstallHookArgs),
+    /// View hook call logs
+    Logs(commands::logs::LogsArgs),
     /// Run as a hook handler for IDE events
     Hook(commands::hook::HookArgs),
 }
@@ -101,6 +107,15 @@ async fn main() -> Result<()> {
         Commands::Watch { path } => {
             let project_path = path.unwrap_or_else(|| ".".to_string());
             watch::run(&project_path).await?;
+        }
+        Commands::Configure => {
+            configure::run().await?;
+        }
+        Commands::InstallHook(args) => {
+            install_hook::run(args).await?;
+        }
+        Commands::Logs(args) => {
+            logs::run(args).await?;
         }
         Commands::Hook(args) => {
             commands::hook::run(args).await?;
