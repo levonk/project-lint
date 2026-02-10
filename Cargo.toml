@@ -23,7 +23,7 @@ walkdir = "2.4"
 notify = "6.1"
 
 # Git integration
-git2 = "0.18"
+git2 = "0.20"
 
 # Error handling
 anyhow = "1.0"
@@ -42,12 +42,12 @@ chrono = { version = "0.4", features = ["serde"] }
 # Terminal output
 colored = "2.0"
 indicatif = "0.17"
-ratatui = "0.28"
+ratatui = "0.30"
 crossterm = "0.28"
 
 # TUI widgets
-tui-textarea = "0.6"
-tui-widget-list = "0.12"
+tui-textarea = "0.7"
+tui-widget-list = "0.13"
 
 # Path and environment
 dirs = "5.0"

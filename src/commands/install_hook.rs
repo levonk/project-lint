@@ -161,7 +161,7 @@ async fn install_generic_hook(args: &InstallHookArgs) -> Result<()> {
     fs::create_dir_all(&hook_dir)?;
 
     let hook_content = format!(
-        r"""#!/bin/bash
+        r#"#!/bin/bash
 # Generic AI agent hook for project-lint
 # This script intercepts tool execution and runs project-lint hooks
 
@@ -177,7 +177,7 @@ EXIT_CODE=$?
 
 # Exit with the same code as project-lint
 exit $EXIT_CODE
-""",
+"#,
         env::current_exe()?.display()
     );
 
@@ -194,11 +194,11 @@ async fn install_git_hooks(args: &InstallHookArgs) -> Result<()> {
     let hooks_dir = git_dir.join("hooks");
     fs::create_dir_all(&hooks_dir)?;
 
-    let project_lint_bin = env::current_exe()?.display();
+    let project_lint_bin = env::current_exe()?.to_string_lossy().to_string();
 
     // Install pre-commit hook
     let pre_commit_content = format!(
-        r"""#!/bin/bash
+        r#"#!/bin/bash
 # Pre-commit hook for project-lint
 # Runs project-lint before committing changes
 
@@ -227,8 +227,8 @@ fi
 
 echo "✅ project-lint checks passed"
 exit 0
-""",
-        project_lint_bin
+"#,
+        env::current_exe()?.display()
     );
 
     let pre_commit_path = hooks_dir.join("pre-commit");
@@ -237,7 +237,7 @@ exit 0
 
     // Install pre-push hook
     let pre_push_content = format!(
-        r"""#!/bin/bash
+        r#"#!/bin/bash
 # Pre-push hook for project-lint
 # Runs comprehensive project-lint checks before pushing
 
@@ -257,7 +257,7 @@ fi
 
 echo "✅ project-lint checks passed"
 exit 0
-""",
+"#,
         project_lint_bin
     );
 
@@ -273,11 +273,11 @@ async fn install_github_workflow(args: &InstallHookArgs) -> Result<()> {
     let workflow_dir = get_hook_dir(&args.dir, ".github/workflows")?;
     fs::create_dir_all(&workflow_dir)?;
 
-    let project_lint_bin = env::current_exe()?.display();
+    let project_lint_bin = env::current_exe()?.to_string_lossy().to_string();
 
     // Create GitHub Actions workflow
     let workflow_content = format!(
-        r"""name: Project-Lint
+        r#"name: Project-Lint
 
 on:
   push:
@@ -348,7 +348,7 @@ jobs:
           echo "Security issues found"
           exit 1
         fi
-""",
+"#,
         project_lint_bin
     );
 
@@ -357,7 +357,7 @@ jobs:
 
     // Create PR workflow
     let pr_workflow_content = format!(
-        r"""name: Project-Lint PR Check
+        r#"name: Project-Lint PR Check
 
 on:
   pull_request:
@@ -403,7 +403,7 @@ jobs:
             repo: context.repo.repo,
             body: '🚫 project-lint found issues in this PR. Please run `project-lint lint --fix` to fix them.'
           })
-""",
+"#,
         project_lint_bin
     );
 
@@ -417,11 +417,11 @@ jobs:
 async fn install_gitlab_workflow(args: &InstallHookArgs) -> Result<()> {
     let workflow_dir = get_hook_dir(&args.dir, ".gitlab-ci.yml")?;
 
-    let project_lint_bin = env::current_exe()?.display();
+    let project_lint_bin = env::current_exe()?.to_string_lossy().to_string();
 
     // Create GitLab CI configuration
     let gitlab_ci_content = format!(
-        r"""# GitLab CI configuration for project-lint
+        r#"# GitLab CI configuration for project-lint
 stages:
   - lint
   - security
@@ -545,7 +545,7 @@ deploy:
     name: production
     url: https://example.com
   when: manual
-""",
+"#,
         project_lint_bin
     );
 
@@ -555,7 +555,7 @@ deploy:
     let mr_template_dir = get_hook_dir(&args.dir, ".gitlab/merge_request_templates")?;
     fs::create_dir_all(&mr_template_dir)?;
 
-    let mr_template = r"""## Project-Lint Results
+    let mr_template = r#"## Project-Lint Results
 
 ### Lint Status
 - [ ] All lint checks passed
@@ -571,7 +571,7 @@ deploy:
 ### Additional Notes
 
 <!-- Add any additional context about your changes here -->
-""";
+"#;
 
     let mr_template_path = mr_template_dir.join("project-lint.md");
     write_hook_file(&mr_template_path, mr_template, args.force)?;
