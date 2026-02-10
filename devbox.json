@@ -2,24 +2,38 @@
   "name": "project-lint",
   "version": "0.1.0",
   "description": "A CLI tool for project linting and file organization",
+  "packages": [
+    "rustc",
+    "cargo",
+    "rust-analyzer",
+    "clippy",
+    "rustfmt",
+    "just",
+    "universal-ctags",
+    "git",
+    "pkg-config",
+    "openssl",
+    "libgit2",
+    "zlib",
+    "clang"
+  ],
   "shell": {
-    "init": [
-      "echo '🔧 Setting up project-lint development environment...'"
-    ],
-    "scripts": {
-      "build": "cargo build",
-      "test": "cargo test",
-      "lint": "cargo clippy -- -D warnings",
-      "format": "cargo fmt",
-      "run": "cargo run",
-      "dev": "cargo watch -x run"
-    }
+    "init_hook": [
+      "just bootstrap-internal"
+    ]
   },
-  "packages": {
-    "rust": {
-      "version": "latest",
-      "features": ["rust-src", "rust-analyzer", "clippy", "rustfmt"]
-    }
+  "scripts": {
+    "bootstrap": "just bootstrap-internal",
+    "doctor": "just doctor-internal",
+    "clean": "just clean-internal",
+    "build": "just build-internal",
+    "lint": "just lint-internal",
+    "test": "just test-internal",
+    "typecheck": "just typecheck-internal",
+    "dev": "just dev-internal",
+    "debug": "just debug-internal",
+    "install": "just install-internal",
+    "release": "just release-internal"
   },
   "env": {
     "RUST_LOG": "debug",

@@ -1,0 +1,39 @@
+{
+  "name": "project-lint",
+  "version": "0.1.0",
+  "description": "A CLI tool for project linting and file organization",
+  "shell": {
+    "init": [
+      "echo '🔧 Setting up project-lint development environment...'"
+    ],
+    "scripts": {
+      "build": "cargo build",
+      "test": "cargo test",
+      "lint": "cargo clippy -- -D warnings",
+      "format": "cargo fmt",
+      "run": "cargo run",
+      "dev": "cargo watch -x run"
+    }
+  },
+  "packages": {
+    "rustc": {
+      "version": "latest"
+    },
+    "cargo": {
+      "version": "latest"
+    },
+    "rust-analyzer": {
+      "version": "latest"
+    },
+    "clippy": {
+      "version": "latest"
+    },
+    "rustfmt": {
+      "version": "latest"
+    }
+  },
+  "env": {
+    "RUST_LOG": "debug",
+    "RUST_BACKTRACE": "1"
+  }
+}
