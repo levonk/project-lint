@@ -889,7 +889,7 @@ async fn perform_dependency_analysis(
     let checker = DependencyVersionChecker::new();
 
     match checker.scan(project_path).await {
-        Ok(detected_issues: Vec<crate::dependency_version_checker::DependencyIssue>) => {
+        Ok(detected_issues) => {
             for issue in &detected_issues {
                 let severity_icon = match issue.severity {
                     crate::dependency_version_checker::Severity::Error => "🔴",

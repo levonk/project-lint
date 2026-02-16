@@ -228,7 +228,7 @@ fi
 echo "✅ project-lint checks passed"
 exit 0
 "#,
-        env::current_exe()?.display()
+        project_lint_bin
     );
 
     let pre_commit_path = hooks_dir.join("pre-commit");

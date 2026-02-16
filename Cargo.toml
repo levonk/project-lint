@@ -41,13 +41,13 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Terminal output
 colored = "2.0"
-indicatif = "0.17"
+indicatif = "0.18"
 ratatui = "0.30"
 crossterm = "0.28"
 
 # TUI widgets
 tui-textarea = "0.7"
-tui-widget-list = "0.13"
+tui-widget-list = "0.15"
 
 # Path and environment
 dirs = "5.0"
@@ -67,6 +67,9 @@ tree-sitter-toml = "0.20"
 
 # Dependency version checking
 semver = "1.0"
+
+# Force newer versions of transitive dependencies to fix security issues
+lru = "0.16"
 
 [dev-dependencies]
 tempfile = "3.8"
