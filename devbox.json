@@ -2,21 +2,26 @@
   "name": "project-lint",
   "version": "0.1.0",
   "description": "A CLI tool for project linting and file organization",
-  "packages": [
-    "rustc",
-    "cargo",
-    "rust-analyzer",
-    "clippy",
-    "rustfmt",
-    "just",
-    "universal-ctags",
-    "git",
-    "pkg-config",
-    "openssl",
-    "libgit2",
-    "zlib",
-    "clang"
-  ],
+  "packages": {
+    "rustc": "",
+    "cargo": "",
+    "rust-analyzer": "",
+    "clippy": "",
+    "rustfmt": "",
+    "just": "",
+    "universal-ctags": "",
+    "git": "",
+    "pkg-config": "",
+    "openssl": "",
+    "libgit2": "",
+    "zlib": "",
+    "github:levonk/levonk-packages#devbox-rtk-nodejs-pnpm-force": "",
+    "github:levonk/levonk-packages#devbox-rtk-python-uv-force": "",
+    "github:levonk/levonk-packages#bundle-rtk-core": "",
+    "github:levonk/levonk-packages#bundle-rtk-cloud": "",
+    "github:levonk/smartfo": "",
+    "clang": ""
+  },
   "shell": {
     "init_hook": [
       "just bootstrap-internal"
