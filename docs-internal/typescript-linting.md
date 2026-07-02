@@ -287,7 +287,7 @@ pub fn new_typescript_rules() -> Vec<PatternRule> {
 
 ## References
 
-- **job-aide TypeScript Rules**: `/Users/micro/p/gh/lrepo52/job-aide/.windsurf/rules/typescript-rules.md`
+- **job-aide TypeScript Rules**: `~/p/gh/lrepo52/job-aide/.windsurf/rules/typescript-rules.md`
 - **ADR-20251019001**: File Extension Rationale
 - **ADR-20251019002**: Path Alias Safety Guidelines
 - **ADR-20251019003**: ESLint Plugin Composition API
