@@ -1,0 +1,2 @@
+- Run the skill ~/p/gh/levonk/dotfiles/home/current/.chezmoitemplates/config/ai/skills/software-dev/git-repository-management/SKILL.md 
+- on the project-lint project
