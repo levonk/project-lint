@@ -421,6 +421,32 @@ pub struct CustomRule {
     pub required_if_path_exists: Option<String>,
     #[serde(default)]
     pub triggers: Vec<String>,
+    /// Execution mode for the rule: how matching events are dispatched.
+    ///
+    /// Defaults to `LocalSync` when omitted (backward compatible).
+    #[serde(default)]
+    pub mode: ExecutionMode,
+}
+
+/// How a matched rule is dispatched by the event router.
+///
+/// - `LocalSync`: evaluate synchronously in-process via the `RuleEngine`.
+/// - `LocalAsync`: spawn a background task; return `Allow` immediately.
+/// - `RemoteSync`: forward to a remote daemon and wait (stub — story 13-005).
+/// - `RemoteAsync`: forward to a remote daemon without waiting (stub — story 12-001).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionMode {
+    LocalSync,
+    LocalAsync,
+    RemoteSync,
+    RemoteAsync,
+}
+
+impl Default for ExecutionMode {
+    fn default() -> Self {
+        ExecutionMode::LocalSync
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

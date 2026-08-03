@@ -48,6 +48,7 @@ fn test_custom_rules() {
             required: false,
             required_if_path_exists: None,
             triggers: vec![],
+            mode: project_lint_core::config::ExecutionMode::LocalSync,
         });
 
     assert_eq!(config.rules.custom_rules.len(), 1);

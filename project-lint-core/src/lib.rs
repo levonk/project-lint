@@ -7,8 +7,8 @@ pub mod utils;
 
 // Re-export main types for easier access
 pub use config::{
-    Config, CustomRule, DirectoriesConfig, FilesConfig, GitConfig, GitRuleConfig, ModularRule,
-    RuleConditions, RuleSeverity, RulesConfig, ScriptRuleConfig,
+    Config, CustomRule, DirectoriesConfig, ExecutionMode, FilesConfig, GitConfig, GitRuleConfig,
+    ModularRule, RuleConditions, RuleSeverity, RulesConfig, ScriptRuleConfig,
 };
 pub use hooks::{
     Decision, EventContext, EventMapper, EventType, FileEdit, HookResult, ProjectLintEvent,
