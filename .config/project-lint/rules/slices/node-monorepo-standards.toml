@@ -6,7 +6,7 @@ name = "node-monorepo-standards"
 version = "1.0.0"
 scope = "node-ecosystem"
 updated = "2025-12-19"
-description = "Warn on npm/yarn usage when pnpm is the standard, and ensure turborepo/vitest markers are present."
+description = "Warn on npm/yarn usage when pnpm is the standard, and ensure nx/vitest markers are present."
 
 [[rules]]
 name = "npm_script_usage"
@@ -25,9 +25,9 @@ check_content = true
 content_pattern = "yarn "
 
 [[rules]]
-name = "missing_turbo"
-pattern = "turbo.json"
-message = "turbo.json not found. If this is a monorepo, add turborepo config."
+name = "missing_nx"
+pattern = "nx.json"
+message = "nx.json not found. If this is a monorepo, add Nx config per ADR-20260419001."
 severity = "warning"
 required = true
 

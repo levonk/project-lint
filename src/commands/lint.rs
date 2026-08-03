@@ -1,18 +1,18 @@
-use crate::utils::{Result, matches_pattern};
+use project_lint_core::utils::{Result, matches_pattern};
 use colored::Colorize;
 use std::path::Path;
 use tracing::{debug, info, warn};
 use walkdir::WalkDir;
 use glob::Pattern;
 
-use crate::ast::{ASTAnalyzer, ASTIssue};
-use crate::config::{Config, ModularRule};
-use crate::dependency_version_checker::DependencyVersionChecker;
-use crate::git::{check_branch_allowed, get_git_info};
-use crate::profiles;
-use crate::security::SecurityScanner;
-use crate::typescript::TypeScriptScanner;
-use crate::file_naming::FileNamingScanner;
+use project_lint_core::scanners::ast::{ASTAnalyzer, ASTIssue};
+use project_lint_core::config::{Config, ModularRule};
+use project_lint_core::scanners::dependency_version_checker::{DependencyVersionChecker, Severity as DepSeverity};
+use project_lint_core::scanners::git::{check_branch_allowed, get_git_info};
+use project_lint_core::profiles;
+use project_lint_core::scanners::security::SecurityScanner;
+use project_lint_core::scanners::typescript::TypeScriptScanner;
+use project_lint_core::scanners::file_naming::FileNamingScanner;
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
     info!("Running linting checks on project: {}", project_path);
@@ -366,7 +366,7 @@ fn check_file_organization(
 
 fn check_script_locations(
     project_path: &str,
-    script_config: &crate::config::ScriptRuleConfig,
+    script_config: &project_lint_core::config::ScriptRuleConfig,
     rule: &ModularRule,
     issues: &mut Vec<String>,
 ) -> Result<()> {
@@ -411,7 +411,7 @@ fn check_script_locations(
 
 fn check_custom_rule(
     project_path: &str,
-    custom_rule: &crate::config::CustomRule,
+    custom_rule: &project_lint_core::config::CustomRule,
     issues: &mut Vec<String>,
 ) -> Result<()> {
     // Check conditional requirement
@@ -497,9 +497,9 @@ fn check_custom_rule(
                         }
 
                         let severity_icon = match custom_rule.severity {
-                            crate::config::RuleSeverity::Error => "❌",
-                            crate::config::RuleSeverity::Warning => "⚠️",
-                            crate::config::RuleSeverity::Info => "ℹ️",
+                            project_lint_core::config::RuleSeverity::Error => "❌",
+                            project_lint_core::config::RuleSeverity::Warning => "⚠️",
+                            project_lint_core::config::RuleSeverity::Info => "ℹ️",
                         };
 
                         issues.push(format!(
@@ -518,9 +518,9 @@ fn check_custom_rule(
 
                 if !is_allowed {
                     let severity_icon = match custom_rule.severity {
-                        crate::config::RuleSeverity::Error => "❌",
-                        crate::config::RuleSeverity::Warning => "⚠️",
-                        crate::config::RuleSeverity::Info => "ℹ️",
+                        project_lint_core::config::RuleSeverity::Error => "❌",
+                        project_lint_core::config::RuleSeverity::Warning => "⚠️",
+                        project_lint_core::config::RuleSeverity::Info => "ℹ️",
                     };
 
                     issues.push(format!(
@@ -543,9 +543,9 @@ fn check_custom_rule(
 
     if expect_match && !found_match {
          let severity_icon = match custom_rule.severity {
-            crate::config::RuleSeverity::Error => "❌",
-            crate::config::RuleSeverity::Warning => "⚠️",
-            crate::config::RuleSeverity::Info => "ℹ️",
+            project_lint_core::config::RuleSeverity::Error => "❌",
+            project_lint_core::config::RuleSeverity::Warning => "⚠️",
+            project_lint_core::config::RuleSeverity::Info => "ℹ️",
         };
 
         let context_msg = if let Some(req_path) = &custom_rule.required_if_path_exists {
@@ -892,9 +892,9 @@ async fn perform_dependency_analysis(
         Ok(detected_issues) => {
             for issue in &detected_issues {
                 let severity_icon = match issue.severity {
-                    crate::dependency_version_checker::Severity::Error => "🔴",
-                    crate::dependency_version_checker::Severity::Warning => "🟡",
-                    crate::dependency_version_checker::Severity::Info => "🟢",
+                    DepSeverity::Error => "🔴",
+                    DepSeverity::Warning => "🟡",
+                    DepSeverity::Info => "🟢",
                 };
 
                 issues.push(format!(

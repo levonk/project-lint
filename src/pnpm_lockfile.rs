@@ -1,5 +1,5 @@
 /// pnpm lockfile enforcement rules
-/// Implements ADR 20251106001: Use pnpm and Turborepo for Monorepo Management
+/// Implements ADR 20251106001 (pnpm) and ADR-20260419001 (Nx replaces Turborepo)
 
 use regex::Regex;
 use std::path::{Path, PathBuf};

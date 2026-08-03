@@ -2,27 +2,10 @@ use clap::{Parser, Subcommand};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-mod ast;
 mod commands;
-mod config;
-mod config_validation;
-mod dependency_checker;
-mod dependency_version_checker;
-mod detection;
-mod hooks;
-mod file_naming;
-mod git;
-mod markdown_frontmatter;
-mod package_organization;
 mod pnpm_lockfile;
-mod profiles;
-mod runtime_guards;
-mod security;
-mod typescript;
-mod utils;
 
-use crate::utils::Result;
-use commands::{init, lint, watch, configure, install_hook, logs};
+use project_lint_core::utils::Result;
 
 #[derive(Parser)]
 #[command(
@@ -98,24 +81,24 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Init { force } => {
-            init::run(force).await?;
+            commands::init::run(force).await?;
         }
         Commands::Lint { path, fix, dry_run } => {
             let project_path = path.unwrap_or_else(|| ".".to_string());
-            lint::run(&project_path, fix, dry_run).await?;
+            commands::lint::run(&project_path, fix, dry_run).await?;
         }
         Commands::Watch { path } => {
             let project_path = path.unwrap_or_else(|| ".".to_string());
-            watch::run(&project_path).await?;
+            commands::watch::run(&project_path).await?;
         }
         Commands::Configure => {
-            configure::run().await?;
+            commands::configure_cmd::run().await?;
         }
         Commands::InstallHook(args) => {
-            install_hook::run(args).await?;
+            commands::install_hook::run(args).await?;
         }
         Commands::Logs(args) => {
-            logs::run(args).await?;
+            commands::logs::run(args).await?;
         }
         Commands::Hook(args) => {
             commands::hook::run(args).await?;

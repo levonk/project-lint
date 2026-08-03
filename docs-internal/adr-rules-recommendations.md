@@ -142,26 +142,26 @@ version: 1.0.0
 
 ---
 
-### 5. **Turborepo Configuration** (ADR 20251106001)
+### 5. **Nx Configuration** (ADR-20260419001, supersedes ADR 20251106001)
 **Status**: ⭐ Medium Priority - Moderately Detectable
 
-**Rule**: Enforce Turborepo configuration in monorepo
+**Rule**: Enforce Nx configuration in monorepo (Turborepo was superseded by ADR-20260419001)
 
 **Detectable Violations**:
-- ❌ Missing `turbo.json` in root
-- ❌ Invalid `turbo.json` syntax
+- ❌ Missing `nx.json` in root
+- ❌ Invalid `nx.json` syntax
 - ⚠️  Missing cache configuration
-- ⚠️  Missing pipeline definitions
+- ⚠️  Missing target defaults
 
 **Implementation**:
-- Create a `turborepo-config` slice
-- Validate `turbo.json` presence and structure
-- Check for essential pipeline tasks
+- Create a `nx-config` slice
+- Validate `nx.json` presence and structure
+- Check for essential target defaults (build, lint, test)
 
 **Example**:
 ```json
-✅ turbo.json with proper pipeline configuration
-❌ Missing turbo.json
+✅ nx.json with proper targetDefaults configuration
+❌ Missing nx.json
 ```
 
 ---
@@ -249,7 +249,7 @@ version: 1.0.0
 
 ### Phase 2: Safety & Quality (Weeks 3-4)
 4. Runtime Guards for Browser Safety (ADR 006)
-5. Turborepo Configuration (ADR 20251106001)
+5. Nx Configuration (ADR-20260419001)
 
 ### Phase 3: Advanced (Weeks 5+)
 6. Dependency Consistency
@@ -293,5 +293,6 @@ Each rule set would have:
 
 - **ADR 002**: Refined Package Organization
 - **ADR 006**: Runtime Guards for Browser Safety
-- **ADR 20251106001**: pnpm and Turborepo
+- **ADR 20251106001**: pnpm (Turborepo portion superseded by ADR-20260419001)
+- **ADR-20260419001**: Nx monorepo build tool (supersedes Turborepo)
 - **ADR 20251106016**: Standardized Markdown Frontmatter

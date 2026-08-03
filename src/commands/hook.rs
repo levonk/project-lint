@@ -1,7 +1,7 @@
-use crate::utils::Result;
-use crate::hooks::{EventMapper, HookResult, Decision, mappers::{WindsurfMapper, ClaudeMapper}, initialize_global_logger, log_hook_event};
-use crate::config::Config;
-use crate::profiles;
+use project_lint_core::utils::Result;
+use project_lint_core::hooks::{EventMapper, HookResult, Decision, mappers::{WindsurfMapper, ClaudeMapper, KiroMapper}, initialize_global_logger, log_hook_event, RuleEngine};
+use project_lint_core::config::Config;
+use project_lint_core::profiles;
 use clap::Args;
 use std::io::{self, Read};
 use std::path::Path;

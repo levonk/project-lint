@@ -1,24 +1,17 @@
-pub mod ast;
 pub mod commands;
-pub mod config;
-pub mod config_validation;
-pub mod detection;
-pub mod file_naming;
-pub mod git;
-pub mod hooks;
-pub mod markdown_frontmatter;
-pub mod package_organization;
 pub mod pnpm_lockfile;
-pub mod profiles;
-pub mod runtime_guards;
-pub mod security;
-pub mod typescript;
-pub mod utils;
+
+// Re-export core modules for backward compatibility
+pub use project_lint_core::{
+    config, hooks, profiles, utils,
+    scanners,
+    dependency_checker,
+};
 
 // Re-export main types for easier testing
-pub use ast::{ASTAnalyzer, ASTIssue};
-pub use config::{
+pub use project_lint_core::scanners::ast::{ASTAnalyzer, ASTIssue};
+pub use project_lint_core::config::{
     Config, CustomRule, DirectoriesConfig, FilesConfig, GitConfig, GitRuleConfig, ModularRule,
     RuleConditions, RuleSeverity, RulesConfig, ScriptRuleConfig,
 };
-pub use git::GitInfo;
+pub use project_lint_core::scanners::git::GitInfo;

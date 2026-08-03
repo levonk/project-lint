@@ -1,5 +1,5 @@
 use crate::commands::install_hook::{run, InstallHookArgs};
-use crate::utils::Result;
+use project_lint_core::utils::Result;
 use tempfile::TempDir;
 use std::fs;
 use std::path::Path;

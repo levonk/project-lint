@@ -1,5 +1,5 @@
-use crate::utils::Result;
-use crate::hooks::{get_hook_stats, HookLogger};
+use project_lint_core::utils::Result;
+use project_lint_core::hooks::{get_hook_stats, HookLogger};
 use clap::Args;
 use std::path::PathBuf;
 use tracing::info;

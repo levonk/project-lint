@@ -1,5 +1,5 @@
-use crate::config::{Config, ModularRule, RuleSeverity};
-use crate::utils::Result;
+use project_lint_core::config::{Config, ModularRule, RuleSeverity};
+use project_lint_core::utils::Result;
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -116,9 +116,11 @@ impl App {
         if let Some(i) = self.selected_rule {
             if let Some(rule) = self.config.modular_rules.get_mut(i) {
                 rule.enabled = !rule.enabled;
+                let rule_name = rule.name.clone();
+                let is_enabled = rule.enabled;
                 self.modified = true;
                 self.show_message(
-                    format!("Rule '{}' {}", rule.name, if rule.enabled { "enabled" } else { "disabled" }),
+                    format!("Rule '{}' {}", rule_name, if is_enabled { "enabled" } else { "disabled" }),
                     Style::default().fg(Color::Green),
                 );
             }
@@ -174,8 +176,9 @@ impl App {
     
     pub fn save_config(&mut self) -> Result<()> {
         if let Some(path) = &self.config_path {
+            let path = path.clone();
             let content = toml::to_string_pretty(&self.config)?;
-            std::fs::write(path, content)?;
+            std::fs::write(&path, content)?;
             self.modified = false;
             self.show_message("Configuration saved successfully".to_string(), Style::default().fg(Color::Green));
             info!("Configuration saved to {:?}", path);
@@ -408,7 +411,7 @@ fn render_profiles(f: &mut Frame, app: &mut App, area: Rect) {
             let details = vec![
                 Line::from(format!("Name: {}", profile.metadata.name)),
                 Line::from(format!("Version: {}", profile.metadata.version)),
-                Line::from(format!("Enabled: {}", profile.enable.enabled)),
+                Line::from(format!("Domains: {}", profile.enable.domains.len())),
             ];
             
             let details_paragraph = Paragraph::new(details)

@@ -1,6 +1,6 @@
 # Node/Monorepo standards (warn-only)
 name = "node-monorepo-standards"
-description = "Warn on npm/yarn usage when pnpm is the standard, and ensure turborepo/vitest markers are present when applicable."
+description = "Warn on npm/yarn usage when pnpm is the standard, and ensure nx/vitest markers are present when applicable."
 enabled = true
 severity = "warning"
 
@@ -33,9 +33,9 @@ message = "Found yarn.lock. This repo uses pnpm. Remove yarn.lock and use pnpm i
 severity = "error"
 
 [[rules]]
-name = "missing_turbo"
-pattern = "turbo.json"
-message = "turbo.json not found. If this is a monorepo, add turborepo config; otherwise ignore."
+name = "missing_nx"
+pattern = "nx.json"
+message = "nx.json not found. If this is a monorepo, add Nx config per ADR-20260419001; otherwise ignore."
 severity = "warning"
 required = false
 

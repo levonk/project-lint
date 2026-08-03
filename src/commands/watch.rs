@@ -1,4 +1,4 @@
-use crate::utils::Result;
+use project_lint_core::utils::Result;
 use colored::Colorize;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
@@ -6,7 +6,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
-use crate::config::Config;
+use project_lint_core::config::Config;
 
 pub async fn run(project_path: &str) -> Result<()> {
     info!("Starting file watcher for project: {}", project_path);
@@ -70,9 +70,9 @@ async fn run_lint_checks(project_path: &str, config: &Config) -> Result<()> {
 
     // Git branch checks
     if config.is_check_enabled("git_branch") {
-        if let Some(git_info) = crate::git::get_git_info(project_path)? {
+        if let Some(git_info) = project_lint_core::scanners::git::get_git_info(project_path)? {
             if config.git.warn_wrong_branch {
-                let branch_allowed = crate::git::check_branch_allowed(
+                let branch_allowed = project_lint_core::scanners::git::check_branch_allowed(
                     &git_info,
                     &config.git.allowed_branches,
                     &config.git.forbidden_branches,

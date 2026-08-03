@@ -1,4 +1,4 @@
-use project_lint::config::Config;
+use project_lint_core::config::Config;
 use std::path::Path;
 
 #[test]
@@ -6,9 +6,9 @@ fn test_project_structure() {
     // Test that the project has the expected structure
     assert!(Path::new("src/main.rs").exists());
     assert!(Path::new("src/lib.rs").exists());
-    assert!(Path::new("src/config.rs").exists());
-    assert!(Path::new("src/git.rs").exists());
-    assert!(Path::new("src/utils.rs").exists());
+    assert!(Path::new("project-lint-core/src/config.rs").exists());
+    assert!(Path::new("project-lint-core/src/scanners/git.rs").exists());
+    assert!(Path::new("project-lint-core/src/utils.rs").exists());
     assert!(Path::new("src/commands/mod.rs").exists());
     assert!(Path::new("src/commands/init.rs").exists());
     assert!(Path::new("src/commands/lint.rs").exists());

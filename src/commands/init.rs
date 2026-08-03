@@ -1,14 +1,14 @@
-use crate::utils::Result;
+use project_lint_core::utils::Result;
 use colored::Colorize;
 use tracing::{info, warn};
 
-use crate::config::Config;
+use project_lint_core::config::Config;
 
 pub async fn run(force: bool) -> Result<()> {
     info!("Initializing project-lint configuration");
 
     // Initialize in the current project root
-    let project_root = crate::utils::get_project_root()?;
+    let project_root = project_lint_core::utils::get_project_root()?;
     let config_dir = project_root.join(".config").join("project-lint");
     let config_file = config_dir.join("config.toml");
 

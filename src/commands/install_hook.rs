@@ -1,4 +1,4 @@
-use crate::utils::Result;
+use project_lint_core::utils::Result;
 use clap::Args;
 use std::path::PathBuf;
 use std::fs;
@@ -273,11 +273,10 @@ async fn install_github_workflow(args: &InstallHookArgs) -> Result<()> {
     let workflow_dir = get_hook_dir(&args.dir, ".github/workflows")?;
     fs::create_dir_all(&workflow_dir)?;
 
-    let project_lint_bin = env::current_exe()?.to_string_lossy().to_string();
+    let _project_lint_bin = env::current_exe()?.to_string_lossy().to_string();
 
     // Create GitHub Actions workflow
-    let workflow_content = format!(
-        r#"name: Project-Lint
+    let workflow_content = r#"name: Project-Lint
 
 on:
   push:
@@ -302,7 +301,7 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cargo/registry
-        key: ${{{{ runner.os }}}-cargo-registry-${{ hash('**/Cargo.lock') }}}
+        key: ${{ runner.os }}-cargo-registry-${{ hash('**/Cargo.lock') }}
 
     - name: Build project-lint
       run: |
@@ -348,16 +347,13 @@ jobs:
           echo "Security issues found"
           exit 1
         fi
-"#,
-        project_lint_bin
-    );
+"#.to_string();
 
     let workflow_path = workflow_dir.join("project-lint.yml");
     write_hook_file(&workflow_path, &workflow_content, args.force)?;
 
     // Create PR workflow
-    let pr_workflow_content = format!(
-        r#"name: Project-Lint PR Check
+    let pr_workflow_content = r#"name: Project-Lint PR Check
 
 on:
   pull_request:
@@ -403,9 +399,7 @@ jobs:
             repo: context.repo.repo,
             body: '🚫 project-lint found issues in this PR. Please run `project-lint lint --fix` to fix them.'
           })
-"#,
-        project_lint_bin
-    );
+"#.to_string();
 
     let pr_workflow_path = workflow_dir.join("project-lint-pr.yml");
     write_hook_file(&pr_workflow_path, &pr_workflow_content, args.force)?;
@@ -417,11 +411,10 @@ jobs:
 async fn install_gitlab_workflow(args: &InstallHookArgs) -> Result<()> {
     let workflow_dir = get_hook_dir(&args.dir, ".gitlab-ci.yml")?;
 
-    let project_lint_bin = env::current_exe()?.to_string_lossy().to_string();
+    let _project_lint_bin = env::current_exe()?.to_string_lossy().to_string();
 
     // Create GitLab CI configuration
-    let gitlab_ci_content = format!(
-        r#"# GitLab CI configuration for project-lint
+    let gitlab_ci_content = r#"# GitLab CI configuration for project-lint
 stages:
   - lint
   - security
@@ -545,9 +538,7 @@ deploy:
     name: production
     url: https://example.com
   when: manual
-"#,
-        project_lint_bin
-    );
+"#.to_string();
 
     write_hook_file(&workflow_dir, &gitlab_ci_content, args.force)?;
 
@@ -613,5 +604,5 @@ fn make_executable(path: &PathBuf) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    mod install_hook_tests;
+    include!("install_hook_tests.rs");
 }

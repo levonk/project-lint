@@ -1,4 +1,4 @@
-use project_lint::config::Config;
+use project_lint_core::config::Config;
 
 #[test]
 fn test_default_config() {
@@ -36,11 +36,18 @@ fn test_custom_rules() {
     config
         .rules
         .custom_rules
-        .push(project_lint::config::CustomRule {
+        .push(project_lint_core::config::CustomRule {
             name: "test_rule".to_string(),
             pattern: "*.test".to_string(),
             message: "Test rule".to_string(),
-            severity: project_lint::config::RuleSeverity::Warning,
+            severity: project_lint_core::config::RuleSeverity::Warning,
+            check_content: false,
+            content_pattern: None,
+            exception_pattern: None,
+            condition: None,
+            required: false,
+            required_if_path_exists: None,
+            triggers: vec![],
         });
 
     assert_eq!(config.rules.custom_rules.len(), 1);

@@ -1,6 +1,6 @@
 use crate::commands::configure::run_tui;
-use crate::config::Config;
-use crate::utils::Result;
+use project_lint_core::config::Config;
+use project_lint_core::utils::Result;
 use std::path::PathBuf;
 use tracing::{info, error};
 

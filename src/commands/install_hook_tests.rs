@@ -1,9 +1,10 @@
-use crate::commands::install_hook::{run, InstallHookArgs};
-use crate::utils::Result;
+use project_lint_core::utils::Result;
 use tempfile::TempDir;
 use std::fs;
 use std::path::Path;
 use tokio::fs as async_fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 #[tokio::test]
 async fn test_install_windsurf_hook() -> Result<()> {
@@ -33,13 +34,8 @@ async fn test_install_windsurf_hook() -> Result<()> {
     
     // Verify script content
     let content = fs::read_to_string(&hook_script)?;
-    assert!(content.contains("project-lint hook --source windsurf"));
-    
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_install_claude_hook() -> Result<()> {
+    assert!(content.contains("hook --source"));
+    assert!(content.contains("HOOK_TYPE=\"windsurf\""));
     let temp_dir = TempDir::new()?;
     let hook_dir = temp_dir.path().join(".claude");
     
@@ -57,7 +53,8 @@ async fn test_install_claude_hook() -> Result<()> {
     
     // Verify script content
     let content = fs::read_to_string(&hook_script)?;
-    assert!(content.contains("project-lint hook --source claude"));
+    assert!(content.contains("hook --source"));
+    assert!(content.contains("HOOK_TYPE=\"claude\""));
     
     Ok(())
 }
@@ -81,7 +78,8 @@ async fn test_install_cursor_hook() -> Result<()> {
     
     // Verify script content
     let content = fs::read_to_string(&hook_script)?;
-    assert!(content.contains("project-lint hook --source cursor"));
+    assert!(content.contains("hook --source"));
+    assert!(content.contains("HOOK_TYPE=\"cursor\""));
     
     Ok(())
 }
@@ -105,7 +103,8 @@ async fn test_install_generic_hook() -> Result<()> {
     
     // Verify script content
     let content = fs::read_to_string(&hook_script)?;
-    assert!(content.contains("project-lint hook --source generic"));
+    assert!(content.contains("hook --source"));
+    assert!(content.contains("HOOK_TYPE=\"generic\""));
     
     Ok(())
 }
@@ -140,7 +139,8 @@ async fn test_install_hook_force_overwrite() -> Result<()> {
     
     run(args).await?;
     let content = fs::read_to_string(&existing_hook)?;
-    assert!(content.contains("project-lint hook --source windsurf"));
+    assert!(content.contains("hook --source"));
+    assert!(content.contains("HOOK_TYPE=\"windsurf\""));
     
     Ok(())
 }
