@@ -6,6 +6,7 @@ pub mod configure;
 pub mod configure_cmd;
 pub mod install_hook;
 pub mod logs;
+pub mod policy;
 
 pub use init::run as init;
 pub use lint::run as lint;
@@ -14,3 +15,4 @@ pub use hook::run as hook;
 pub use configure_cmd::run as configure;
 pub use install_hook::run as install_hook;
 pub use logs::run as logs;
+pub use policy::run as policy;

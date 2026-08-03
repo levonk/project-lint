@@ -57,6 +57,8 @@ enum Commands {
     Logs(commands::logs::LogsArgs),
     /// Run as a hook handler for IDE events
     Hook(commands::hook::HookArgs),
+    /// Manage and export policy bundles
+    Policy(commands::policy::PolicyArgs),
 }
 
 #[tokio::main]
@@ -102,6 +104,9 @@ async fn main() -> Result<()> {
         }
         Commands::Hook(args) => {
             commands::hook::run(args).await?;
+        }
+        Commands::Policy(args) => {
+            commands::policy::run(args).await?;
         }
     }
 

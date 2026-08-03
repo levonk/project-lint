@@ -648,6 +648,42 @@ impl Config {
         Ok(config)
     }
 
+    /// Load configuration from an explicit config file path.
+    ///
+    /// The config file's parent directory is used as the config directory for
+    /// loading modular rules, profiles, and plugins (mirroring `Config::load`).
+    pub fn load_from_file(config_path: &std::path::Path) -> Result<Self> {
+        let config_dir = config_path
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        let mut config = if config_path.exists() {
+            debug!("Loading config from {:?}", config_path);
+            let content = std::fs::read_to_string(config_path)?;
+            let config: Config = toml::from_str(&content)?;
+            info!("Configuration loaded successfully");
+            config
+        } else {
+            debug!("Config file {:?} not found, using defaults", config_path);
+            Config::default()
+        };
+
+        // Load core configuration
+        config.core_config = Self::load_core_config(&config_dir)?;
+
+        // Load modular rules from .config/project-lint/rules/active/
+        config.modular_rules = Self::load_modular_rules(&config_dir)?;
+
+        // Load profiles
+        config.active_profiles = Self::load_profiles(&config_dir)?;
+
+        // Load plugins
+        config.active_plugins = Self::load_plugins(&config_dir)?;
+
+        Ok(config)
+    }
+
     pub fn load_core_config(config_dir: &PathBuf) -> Result<CoreConfig> {
         let core_file = config_dir.join("rules").join("core.toml");
 
