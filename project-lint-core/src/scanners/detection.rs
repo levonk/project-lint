@@ -1,6 +1,5 @@
 /// Generic pattern detection and replacement module
 /// Provides reusable functionality for string/regex-based detection and auto-fixing
-
 use regex::Regex;
 use std::fs;
 use std::path::Path;
@@ -42,6 +41,28 @@ pub struct PatternDetector {
 }
 
 impl PatternDetector {
+    /// Compile a set of [`PatternRule`]s into a detector.
+    ///
+    /// Each rule's `pattern` is wrapped with case-sensitivity flags and
+    /// compiled once at construction; [`PatternDetector::scan_str`] reuses the
+    /// compiled regexes for every scan.
+    ///
+    /// ```rust
+    /// use project_lint_core::scanners::detection::{PatternDetector, PatternRule};
+    ///
+    /// let detector = PatternDetector::new(vec![PatternRule {
+    ///     name: "todo".to_string(),
+    ///     pattern: r"TODO\(\w+\)".to_string(),
+    ///     severity: "warning".to_string(),
+    ///     message_template: "{matched}".to_string(),
+    ///     fix_template: None,
+    ///     case_sensitive: true,
+    /// }]).expect("regex compiles");
+    ///
+    /// let issues = detector.scan_str("let x = TODO(alice);", "mem");
+    /// assert_eq!(issues.len(), 1);
+    /// assert_eq!(issues[0].matched_text, "TODO(alice)");
+    /// ```
     pub fn new(rules: Vec<PatternRule>) -> Result<Self, regex::Error> {
         let mut patterns = Vec::new();
         for rule in rules {
@@ -59,6 +80,13 @@ impl PatternDetector {
     /// Scan a file for pattern matches
     pub fn scan_file(&self, file_path: &Path) -> Result<Vec<DetectionIssue>, std::io::Error> {
         let content = fs::read_to_string(file_path)?;
+        Ok(self.scan_str(&content, file_path.to_string_lossy().as_ref()))
+    }
+
+    /// Scan an in-memory string for pattern matches. The `file_label` is used
+    /// only for issue attribution (no disk IO). Useful for property tests and
+    /// callers that already have content in memory.
+    pub fn scan_str(&self, content: &str, file_label: &str) -> Vec<DetectionIssue> {
         let mut issues = Vec::new();
 
         for (rule, regex) in &self.patterns {
@@ -70,18 +98,18 @@ impl PatternDetector {
                     let message = rule
                         .message_template
                         .replace("{matched}", &matched_text)
-                        .replace("{file}", file_path.to_string_lossy().as_ref())
+                        .replace("{file}", file_label)
                         .replace("{line}", &(line_num + 1).to_string())
                         .replace("{column}", &column.to_string());
 
                     let fix = rule.fix_template.as_ref().map(|template| {
                         template
                             .replace("{matched}", &matched_text)
-                            .replace("{file}", file_path.to_string_lossy().as_ref())
+                            .replace("{file}", file_label)
                     });
 
                     issues.push(DetectionIssue {
-                        file: file_path.to_string_lossy().to_string(),
+                        file: file_label.to_string(),
                         line: line_num + 1,
                         column,
                         pattern_name: rule.name.clone(),
@@ -93,15 +121,13 @@ impl PatternDetector {
 
                     debug!(
                         "Pattern '{}' matched in {}: {}",
-                        rule.name,
-                        file_path.display(),
-                        matched_text
+                        rule.name, file_label, matched_text
                     );
                 }
             }
         }
 
-        Ok(issues)
+        issues
     }
 
     /// Apply fixes to a file (returns modified content)
@@ -260,6 +286,7 @@ impl FunctionCallDetector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prop_assert;
 
     #[test]
     fn test_pattern_detection() {
@@ -288,5 +315,117 @@ mod tests {
 
         let detector = FunctionCallDetector::new(rules);
         assert_eq!(detector.rules.len(), 1);
+    }
+
+    #[test]
+    fn test_pattern_detector_apply_fixes_replaces_matched_text() {
+        use tempfile::NamedTempFile;
+        let rules = vec![PatternRule {
+            name: "todo".to_string(),
+            pattern: r"TODO\(\w+\)".to_string(),
+            severity: "warning".to_string(),
+            message_template: "Found TODO: {matched}".to_string(),
+            fix_template: Some("DONE".to_string()),
+            case_sensitive: true,
+        }];
+        let detector = PatternDetector::new(rules).unwrap();
+
+        let file = NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), "let x = TODO(alice);\n").unwrap();
+        let issues = detector.scan_file(file.path()).unwrap();
+        assert_eq!(issues.len(), 1);
+
+        // dry_run: no write, returns fixed content
+        let (content, n) = detector.apply_fixes(file.path(), &issues, true).unwrap();
+        assert_eq!(n, 1);
+        assert!(content.contains("DONE"));
+        // file on disk unchanged
+        assert!(std::fs::read_to_string(file.path())
+            .unwrap()
+            .contains("TODO(alice)"));
+
+        // real fix: file on disk updated
+        let (_, n) = detector.apply_fixes(file.path(), &issues, false).unwrap();
+        assert_eq!(n, 1);
+        let on_disk = std::fs::read_to_string(file.path()).unwrap();
+        assert!(on_disk.contains("DONE"));
+        assert!(!on_disk.contains("TODO(alice)"));
+    }
+
+    #[test]
+    fn test_pattern_detector_apply_fixes_no_fix_template_is_noop() {
+        use tempfile::NamedTempFile;
+        let rules = vec![PatternRule {
+            name: "marker".to_string(),
+            pattern: r"MARKER".to_string(),
+            severity: "info".to_string(),
+            message_template: "marker: {matched}".to_string(),
+            fix_template: None,
+            case_sensitive: true,
+        }];
+        let detector = PatternDetector::new(rules).unwrap();
+        let file = NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), "MARKER here\n").unwrap();
+        let issues = detector.scan_file(file.path()).unwrap();
+        let (_, n) = detector.apply_fixes(file.path(), &issues, false).unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn test_scan_file_missing_path_returns_io_error() {
+        let rules = vec![PatternRule {
+            name: "x".to_string(),
+            pattern: "x".to_string(),
+            severity: "info".to_string(),
+            message_template: "x".to_string(),
+            fix_template: None,
+            case_sensitive: true,
+        }];
+        let detector = PatternDetector::new(rules).unwrap();
+        let result = detector.scan_file(std::path::Path::new("/nonexistent/does/not/exist.txt"));
+        assert!(result.is_err(), "scanning a missing file should error");
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::test_runner::Config {
+            cases: 64, ..proptest::test_runner::Config::default()
+        })]
+
+        #[test]
+        fn regex_always_matches_substring(
+            ref needle in "[a-z]{1,5}",
+            ref suffix in "[a-z]{0,5}"
+        ) {
+            // A literal needle regex must always match a line containing it,
+            // regardless of trailing text. Case-insensitive wrapping is applied
+            // by PatternDetector, so uppercase needles also match lowercase.
+            let rules = vec![PatternRule {
+                name: "needle".to_string(),
+                pattern: regex::escape(needle),
+                severity: "info".to_string(),
+                message_template: "n".to_string(),
+                fix_template: None,
+                case_sensitive: false,
+            }];
+            let detector = PatternDetector::new(rules).expect("regex");
+            let line = format!("{}{}", needle, suffix);
+            let issues = detector.scan_str(&line, "mem");
+            prop_assert!(!issues.is_empty(), "needle {:?} not found in {:?}", needle, line);
+        }
+
+        #[test]
+        fn regex_no_match_when_disjoint(ref hay in "[a-z]{0,10}") {
+            let rules = vec![PatternRule {
+                name: "digit".to_string(),
+                pattern: "[0-9]".to_string(),
+                severity: "info".to_string(),
+                message_template: "d".to_string(),
+                fix_template: None,
+                case_sensitive: true,
+            }];
+            let detector = PatternDetector::new(rules).expect("regex");
+            let issues = detector.scan_str(hay, "mem");
+            prop_assert!(issues.is_empty(), "digit matched in pure-alpha {:?}", hay);
+        }
     }
 }

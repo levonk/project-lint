@@ -75,3 +75,34 @@ pub fn matches_pattern(file_name: &str, pattern: &str) -> bool {
         file_name == pattern
     }
 }
+
+/// Returns true if `pattern` contains glob metacharacters (`*`, `?`, `[`).
+pub fn is_glob(pattern: &str) -> bool {
+    pattern.contains('*') || pattern.contains('?') || pattern.contains('[')
+}
+
+/// Check whether any file matching `spec` exists relative to `project_root`.
+///
+/// `spec` may be a plain relative path (e.g. `"Cargo.toml"`) or a glob pattern
+/// (e.g. `"next.config.*"`). For globs, only direct children of the project
+/// root are considered (depth-1 match), which is the common case for config
+/// files. Plain paths are checked with a direct filesystem stat.
+pub fn path_exists_glob(project_root: &std::path::Path, spec: &str) -> bool {
+    if !is_glob(spec) {
+        return project_root.join(spec).exists();
+    }
+
+    // Glob: match direct children of project_root.
+    if let Ok(entries) = std::fs::read_dir(project_root) {
+        if let Ok(pattern) = glob::Pattern::new(spec) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if pattern.matches(&name_str) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}

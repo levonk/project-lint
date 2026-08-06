@@ -15,6 +15,10 @@ pub struct Config {
     pub directories: DirectoriesConfig,
     #[serde(default)]
     pub rules: RulesConfig,
+    /// Optional per-scanner tuning sections (e.g. `[scanner_config.rust_file_naming]`).
+    /// Scanners read these to augment their built-in rule sets without code changes.
+    #[serde(default)]
+    pub scanner_config: ScannerConfig,
     #[serde(skip)]
     pub modular_rules: Vec<ModularRule>,
     #[serde(skip)]
@@ -23,6 +27,105 @@ pub struct Config {
     pub active_plugins: Vec<Plugin>,
     #[serde(skip)]
     pub core_config: CoreConfig,
+}
+
+/// Container for optional per-scanner configuration sections.
+///
+/// Each field maps to a `[scanner_config.<section>]` TOML table. All sections
+/// default to `None` so existing configs continue to parse unchanged.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ScannerConfig {
+    #[serde(default)]
+    pub rust_file_naming: Option<RustFileNamingConfig>,
+    #[serde(default)]
+    pub dev_environment_files: Option<DevEnvironmentFilesConfig>,
+    #[serde(default)]
+    pub rust_security: Option<RustSecurityConfig>,
+    #[serde(default)]
+    pub vault_security: Option<VaultSecurityConfig>,
+    #[serde(default)]
+    pub dockerfile_security: Option<DockerfileSecurityConfig>,
+    #[serde(default)]
+    pub typescript_monorepo: Option<TypescriptMonorepoConfig>,
+    #[serde(default)]
+    pub package_manager_enforcement: Option<PackageManagerEnforcementConfig>,
+}
+
+/// `[scanner_config.rust_file_naming]` — extra required/forbidden files and
+/// the test-file naming pattern for Rust projects.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RustFileNamingConfig {
+    #[serde(default)]
+    pub required_files: Vec<String>,
+    #[serde(default)]
+    pub forbidden_files: Vec<String>,
+    #[serde(default)]
+    pub test_naming_pattern: Option<String>,
+}
+
+/// `[scanner_config.dev_environment_files]` — required/forbidden dev tooling
+/// files (devbox, direnv, justfile, Makefile).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DevEnvironmentFilesConfig {
+    #[serde(default)]
+    pub required_files: Vec<String>,
+    #[serde(default)]
+    pub forbidden_files: Vec<String>,
+}
+
+/// `[scanner_config.rust_security]` — Rust-specific security toggles.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RustSecurityConfig {
+    #[serde(default = "default_true")]
+    pub ban_unwrap_in_lib: bool,
+    #[serde(default = "default_true")]
+    pub ban_unsafe_blocks: bool,
+    #[serde(default)]
+    pub forbidden_crates: Vec<String>,
+}
+
+/// `[scanner_config.vault_security]` — secrets management backend toggles.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct VaultSecurityConfig {
+    #[serde(default)]
+    pub required_env_prefix: Option<String>,
+    #[serde(default)]
+    pub allowed_backends: Vec<String>,
+}
+
+/// `[scanner_config.dockerfile_security]` — Dockerfile lint toggles.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DockerfileSecurityConfig {
+    #[serde(default = "default_true")]
+    pub require_pinned_digests: bool,
+    #[serde(default = "default_true")]
+    pub require_non_root_user: bool,
+    #[serde(default = "default_true")]
+    pub forbid_copy_dot: bool,
+}
+
+/// `[scanner_config.typescript_monorepo]` — TS monorepo catalog mode, path
+/// aliases, and allowed extensions.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TypescriptMonorepoConfig {
+    #[serde(default)]
+    pub catalog_mode: bool,
+    #[serde(default)]
+    pub path_aliases: Vec<String>,
+    #[serde(default)]
+    pub allowed_extensions: Vec<String>,
+}
+
+/// `[scanner_config.package_manager_enforcement]` — which package managers are
+/// allowed/forbidden in a project.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PackageManagerEnforcementConfig {
+    #[serde(default)]
+    pub allowed: Vec<String>,
+    #[serde(default)]
+    pub forbidden: Vec<String>,
+    #[serde(default)]
+    pub required_lockfile: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -419,6 +522,25 @@ pub struct CustomRule {
     pub required: bool,
     #[serde(default)]
     pub required_if_path_exists: Option<String>,
+    /// Project-level kill switch. If any file matching this glob exists at the
+    /// project root, the entire rule is skipped. Supports glob patterns (e.g.
+    /// `"next.config.*"` to exempt Next.js/Turbopack projects from the `.ts`
+    /// ban per vercel/next.js#82945). Plain paths (no glob metacharacters) are
+    /// treated as literal relative paths.
+    #[serde(default)]
+    pub disabled_if_path_exists: Option<String>,
+    /// Project-level activation gate. The rule is ONLY evaluated if a file
+    /// matching this glob exists at the project root. Use to scope rules to
+    /// specific project types (e.g. `"tsconfig.json"` to only apply the `.ts`
+    /// ban to TypeScript projects, not Rust/Python projects that happen to
+    /// have `.ts` files). Plain paths are treated as literal relative paths.
+    #[serde(default)]
+    pub enabled_if_path_exists: Option<String>,
+    /// Per-file exclusion globs. A file that matches `pattern` but also matches
+    /// any of these is not flagged by this rule. Used to exempt e.g. `*.d.ts`,
+    /// `*.config.ts`, `*.test.ts` from a broad `**/*.ts` ban.
+    #[serde(default)]
+    pub exclude_patterns: Vec<String>,
     #[serde(default)]
     pub triggers: Vec<String>,
     /// Execution mode for the rule: how matching events are dispatched.
@@ -517,6 +639,7 @@ impl Default for Config {
             files: FilesConfig::default(),
             directories: DirectoriesConfig::default(),
             rules: RulesConfig::default(),
+            scanner_config: ScannerConfig::default(),
             modular_rules: Vec::new(),
             active_profiles: Vec::new(),
             active_plugins: Vec::new(),
@@ -1046,5 +1169,112 @@ mod tests {
         assert!(!config.is_check_enabled("repo_disabled"));
         assert!(!config.is_check_enabled("profile_disabled"));
         assert!(config.is_check_enabled("other_check"));
+    }
+
+    #[test]
+    fn test_malformed_toml_config_returns_error() {
+        let bad = "[rules\nmode = \"denylist\""; // missing closing bracket
+        let result: std::result::Result<Config, _> = toml::from_str(bad);
+        assert!(result.is_err(), "malformed TOML should fail to parse");
+    }
+
+    #[test]
+    fn test_minimal_valid_toml_config_parses() {
+        let good = "";
+        let config: Config = toml::from_str(good).expect("empty TOML should yield defaults");
+        assert_eq!(config.rules.mode, RulesMode::Denylist);
+    }
+
+    #[test]
+    fn test_custom_rule_round_trips_all_extended_fields() {
+        let toml_src = r#"
+[[rules.custom_rules]]
+name = "ban-ts"
+pattern = "**/*.ts"
+message = "no ts"
+severity = "warning"
+check_content = false
+required = false
+enabled_if_path_exists = "tsconfig.json"
+disabled_if_path_exists = "next.config.*"
+exclude_patterns = ["**/*.d.ts"]
+exception_pattern = ".*"
+condition = "must_contain"
+triggers = ["pre_write_code"]
+mode = "local_sync"
+"#;
+        let config: Config = toml::from_str(toml_src).expect("round-trip");
+        let rule = &config.rules.custom_rules[0];
+        assert_eq!(rule.name, "ban-ts");
+        assert_eq!(
+            rule.enabled_if_path_exists.as_deref(),
+            Some("tsconfig.json")
+        );
+        assert_eq!(
+            rule.disabled_if_path_exists.as_deref(),
+            Some("next.config.*")
+        );
+        assert_eq!(rule.exclude_patterns, vec!["**/*.d.ts".to_string()]);
+        assert_eq!(rule.exception_pattern.as_deref(), Some(".*"));
+        assert_eq!(rule.condition.as_deref(), Some("must_contain"));
+        assert!(rule.triggers.iter().any(|t| t == "pre_write_code"));
+        assert_eq!(rule.mode, ExecutionMode::LocalSync);
+    }
+
+    #[test]
+    fn test_scanner_config_sections_parse() {
+        let toml_src = r#"
+[scanner_config.rust_file_naming]
+required_files = ["src/lib.rs", "Cargo.lock"]
+forbidden_files = ["Makefile"]
+test_naming_pattern = "*_test.rs"
+
+[scanner_config.rust_security]
+ban_unwrap_in_lib = true
+forbidden_crates = ["openssl"]
+
+[scanner_config.dockerfile_security]
+require_pinned_digests = true
+require_non_root_user = true
+forbid_copy_dot = false
+
+[scanner_config.package_manager_enforcement]
+allowed = ["pnpm"]
+forbidden = ["npm", "yarn"]
+required_lockfile = "pnpm-lock.yaml"
+"#;
+        let config: Config = toml::from_str(toml_src).expect("parse");
+        let rfn = config
+            .scanner_config
+            .rust_file_naming
+            .expect("rust_file_naming");
+        assert_eq!(
+            rfn.required_files,
+            vec!["src/lib.rs".to_string(), "Cargo.lock".to_string()]
+        );
+        assert_eq!(rfn.forbidden_files, vec!["Makefile".to_string()]);
+        assert_eq!(rfn.test_naming_pattern.as_deref(), Some("*_test.rs"));
+        let rs = config.scanner_config.rust_security.expect("rust_security");
+        assert!(rs.ban_unwrap_in_lib);
+        assert_eq!(rs.forbidden_crates, vec!["openssl".to_string()]);
+        let ds = config
+            .scanner_config
+            .dockerfile_security
+            .expect("dockerfile_security");
+        assert!(ds.require_pinned_digests);
+        assert!(!ds.forbid_copy_dot);
+        let pme = config
+            .scanner_config
+            .package_manager_enforcement
+            .expect("pme");
+        assert_eq!(pme.allowed, vec!["pnpm".to_string()]);
+        assert_eq!(pme.required_lockfile.as_deref(), Some("pnpm-lock.yaml"));
+    }
+
+    #[test]
+    fn test_scanner_config_defaults_to_none() {
+        let config: Config = toml::from_str("").expect("empty");
+        assert!(config.scanner_config.rust_file_naming.is_none());
+        assert!(config.scanner_config.dockerfile_security.is_none());
     }
 }
