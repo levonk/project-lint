@@ -10,6 +10,14 @@
 
 set -euo pipefail
 
+# Re-exec through devbox when invoked from a bare shell (e.g. a git hook)
+# so rustfmt/clippy/cargo resolve to the project toolchain. Inside devbox,
+# DEVBOX_SHELL_ENABLED=1 prevents recursion. In CI, everything is on PATH
+# already and devbox may be absent, so the guard is skipped.
+if [[ "${DEVBOX_SHELL_ENABLED:-0}" != "1" ]] && command -v devbox >/dev/null 2>&1; then
+    exec devbox run -- "$0" "$@"
+fi
+
 MODE="fast"
 if [[ "${1:-}" == "--full" || "${CI:-}" == "true" ]]; then
     MODE="full"
