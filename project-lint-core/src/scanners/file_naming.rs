@@ -1,9 +1,9 @@
-use std::path::{Path, PathBuf};
-use std::collections::HashMap;
-use tracing::{debug, warn, info};
-use walkdir::WalkDir;
-use colored::Colorize;
 use crate::utils::Result;
+use colored::Colorize;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use tracing::{debug, info, warn};
+use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]
 pub struct NamingIssue {
@@ -19,9 +19,25 @@ pub struct FileNamingScanner {
     exact_mismatches: HashMap<String, String>,
     /// List of "correct names" to check against for fuzzy matching
     expected_names: Vec<String>,
+    /// Extra forbidden filenames (from `[scanner_config.*]` sections). Presence
+    /// of any of these at the project root is flagged.
+    forbidden_files: Vec<String>,
 }
 
 impl FileNamingScanner {
+    /// Construct a scanner preloaded with common filename typos and the set
+    /// of expected canonical project filenames (e.g. `package.json`,
+    /// `Cargo.toml`, `devbox.json`).
+    ///
+    /// ```rust
+    /// use project_lint_core::scanners::file_naming::FileNamingScanner;
+    /// let scanner = FileNamingScanner::new();
+    /// // scanning an empty temp dir yields no issues
+    /// let dir = std::env::temp_dir().join("project_lint_doctest_new");
+    /// let _ = std::fs::create_dir_all(&dir);
+    /// let issues = scanner.scan(&dir.to_string_lossy()).expect("scan");
+    /// assert!(issues.iter().all(|i| !i.suggested_name.is_empty()));
+    /// ```
     pub fn new() -> Self {
         let mut exact_mismatches = HashMap::new();
 
@@ -32,7 +48,10 @@ impl FileNamingScanner {
 
         // Common extension mistakes
         exact_mismatches.insert("package.jsn".to_string(), "package.json".to_string());
-        exact_mismatches.insert("docker-compose.yaml".to_string(), "docker-compose.yml".to_string());
+        exact_mismatches.insert(
+            "docker-compose.yaml".to_string(),
+            "docker-compose.yml".to_string(),
+        );
         exact_mismatches.insert("Cargo.toml.lock".to_string(), "Cargo.lock".to_string());
 
         let expected_names = vec![
@@ -54,7 +73,23 @@ impl FileNamingScanner {
         Self {
             exact_mismatches,
             expected_names,
+            forbidden_files: Vec::new(),
         }
+    }
+
+    /// Construct a scanner augmented with a `[scanner_config.rust_file_naming]`
+    /// (or `[scanner_config.dev_environment_files]`) section. `required_files`
+    /// are folded into the fuzzy-match expected-names set; `forbidden_files`
+    /// are flagged if present at the project root.
+    pub fn with_extra_files(required_files: Vec<String>, forbidden_files: Vec<String>) -> Self {
+        let mut scanner = Self::new();
+        for f in required_files {
+            if !scanner.expected_names.contains(&f) {
+                scanner.expected_names.push(f);
+            }
+        }
+        scanner.forbidden_files = forbidden_files;
+        scanner
     }
 
     pub fn scan(&self, project_path: &str) -> Result<Vec<NamingIssue>> {
@@ -67,7 +102,11 @@ impl FileNamingScanner {
             .filter_map(|e| e.ok())
         {
             let path = entry.path();
-            let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let file_name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             let is_dir = path.is_dir();
 
             // Skip the project root itself
@@ -91,13 +130,29 @@ impl FileNamingScanner {
                 continue;
             }
 
+            // 1b. Check forbidden files (from scanner_config sections)
+            if self.forbidden_files.iter().any(|f| f == &file_name) {
+                issues.push(NamingIssue {
+                    path: path.to_path_buf(),
+                    suggested_name: String::new(),
+                    message: format!(
+                        "Found forbidden file '{}' (disallowed by scanner_config)",
+                        file_name.yellow()
+                    ),
+                    severity: "warning".to_string(),
+                    is_directory: is_dir,
+                });
+                continue;
+            }
+
             // 2. Fuzzy matching for typos
             for expected in &self.expected_names {
                 if file_name == *expected {
                     continue;
                 }
 
-                let distance = levenshtein_distance(&file_name.to_lowercase(), &expected.to_lowercase());
+                let distance =
+                    levenshtein_distance(&file_name.to_lowercase(), &expected.to_lowercase());
 
                 // If it's very close (1 or 2 chars off) but not exact
                 let threshold = if expected.len() > 6 { 2 } else { 1 };
@@ -135,7 +190,11 @@ impl FileNamingScanner {
             new_path.set_file_name(&issue.suggested_name);
 
             if dry_run {
-                info!("(Dry-run) Would rename {} to {}", old_path.display(), new_path.display());
+                info!(
+                    "(Dry-run) Would rename {} to {}",
+                    old_path.display(),
+                    new_path.display()
+                );
                 fixed_count += 1;
             } else {
                 match std::fs::rename(old_path, &new_path) {
@@ -144,7 +203,12 @@ impl FileNamingScanner {
                         fixed_count += 1;
                     }
                     Err(e) => {
-                        warn!("Failed to rename {} to {}: {}", old_path.display(), new_path.display(), e);
+                        warn!(
+                            "Failed to rename {} to {}: {}",
+                            old_path.display(),
+                            new_path.display(),
+                            e
+                        );
                     }
                 }
             }
@@ -161,20 +225,28 @@ fn levenshtein_distance(s1: &str, s2: &str) -> usize {
     let n = v1.len();
     let m = v2.len();
 
-    if n == 0 { return m; }
-    if m == 0 { return n; }
+    if n == 0 {
+        return m;
+    }
+    if m == 0 {
+        return n;
+    }
 
     let mut dp = vec![vec![0; m + 1]; n + 1];
 
-    for i in 0..=n { dp[i][0] = i; }
-    for j in 0..=m { dp[0][j] = j; }
+    for i in 0..=n {
+        dp[i][0] = i;
+    }
+    for j in 0..=m {
+        dp[0][j] = j;
+    }
 
     for i in 1..=n {
         for j in 1..=m {
             let cost = if v1[i - 1] == v2[j - 1] { 0 } else { 1 };
             dp[i][j] = std::cmp::min(
                 dp[i - 1][j] + 1,
-                std::cmp::min(dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
+                std::cmp::min(dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost),
             );
         }
     }
@@ -185,7 +257,7 @@ fn levenshtein_distance(s1: &str, s2: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_fs::prelude::*;
+    use proptest::{prop_assert, prop_assert_eq};
     use tempfile::tempdir;
 
     #[test]
@@ -194,6 +266,50 @@ mod tests {
         assert_eq!(levenshtein_distance("book", "back"), 2);
         assert_eq!(levenshtein_distance("hello", "hello"), 0);
         assert_eq!(levenshtein_distance(".devcontainers", ".devcontainer"), 1);
+    }
+
+    #[test]
+    fn test_with_extra_files_flags_forbidden() -> Result<()> {
+        let temp = tempdir()?;
+        let root = temp.path();
+        std::fs::File::create(root.join("Makefile"))?;
+        let scanner = FileNamingScanner::with_extra_files(
+            vec!["Cargo.lock".to_string()],
+            vec!["Makefile".to_string()],
+        );
+        let issues = scanner.scan(&root.to_string_lossy())?;
+        let forbidden = issues
+            .iter()
+            .find(|i| i.message.contains("forbidden file"))
+            .expect("expected a forbidden-file issue");
+        assert_eq!(forbidden.path.file_name().unwrap(), "Makefile");
+        Ok(())
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn levenshtein_identity_is_zero(ref s in ".{0,20}") {
+            prop_assert_eq!(levenshtein_distance(s, s), 0);
+        }
+
+        #[test]
+        fn levenshtein_symmetric(ref a in ".{0,15}", ref b in ".{0,15}") {
+            prop_assert_eq!(levenshtein_distance(a, b), levenshtein_distance(b, a));
+        }
+
+        #[test]
+        fn levenshtein_bounded_by_max_len(ref a in ".{0,15}", ref b in ".{0,15}") {
+            let dist = levenshtein_distance(a, b);
+            let max = a.chars().count().max(b.chars().count());
+            prop_assert!(dist <= max, "dist {} > max {}", dist, max);
+        }
+
+        #[test]
+        fn levenshtein_empty_string_equals_other_len(ref s in ".{0,20}") {
+            let n = s.chars().count();
+            prop_assert_eq!(levenshtein_distance(s, ""), n);
+            prop_assert_eq!(levenshtein_distance("", s), n);
+        }
     }
 
     #[test]

@@ -1,7 +1,8 @@
 /// Security-specific detection rules using the generic detection module
 /// Implements codeguard rules for static analysis
-
-use crate::scanners::detection::{DetectionIssue, FunctionCallDetector, FunctionCallRule, PatternDetector, PatternRule};
+use crate::scanners::detection::{
+    DetectionIssue, FunctionCallDetector, FunctionCallRule, PatternDetector, PatternRule,
+};
 use std::path::Path;
 use tracing::info;
 
@@ -146,7 +147,7 @@ impl SecurityRuleSet {
             },
             PatternRule {
                 name: "des_usage".to_string(),
-                pattern: r"\b(DES|des)\b(?!k)".to_string(),
+                pattern: r"\b(DES|des)\b".to_string(),
                 severity: "high".to_string(),
                 message_template: "🚫 DES encryption detected: {matched}. DES is insecure. Use AES-256 or stronger.".to_string(),
                 fix_template: Some("AES".to_string()),
@@ -216,7 +217,10 @@ impl SecurityScanner {
     }
 
     /// Scan a file for all security issues
-    pub fn scan_file(&self, file_path: &Path) -> Result<Vec<DetectionIssue>, Box<dyn std::error::Error>> {
+    pub fn scan_file(
+        &self,
+        file_path: &Path,
+    ) -> Result<Vec<DetectionIssue>, Box<dyn std::error::Error>> {
         let mut all_issues = Vec::new();
 
         // Determine file type to decide which detectors to run
@@ -253,7 +257,9 @@ impl SecurityScanner {
         issues: &[DetectionIssue],
         dry_run: bool,
     ) -> Result<usize, Box<dyn std::error::Error>> {
-        let (_, fixes_applied) = self.credentials_detector.apply_fixes(file_path, issues, dry_run)?;
+        let (_, fixes_applied) = self
+            .credentials_detector
+            .apply_fixes(file_path, issues, dry_run)?;
         Ok(fixes_applied)
     }
 }
@@ -280,6 +286,40 @@ mod tests {
     #[test]
     fn test_scanner_creation() {
         let scanner = SecurityScanner::new();
-        assert!(scanner.is_ok());
+        assert!(
+            scanner.is_ok(),
+            "SecurityScanner::new failed: {:?}",
+            scanner.err()
+        );
+    }
+
+    #[test]
+    fn test_security_scan_and_apply_fixes() {
+        use tempfile::NamedTempFile;
+        let scanner = SecurityScanner::new().expect("scanner");
+        // suspicious_password_var rule matches: password = '...' (8+ chars)
+        let file = NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), "password = 'supersecretvalue'\n").unwrap();
+
+        let issues = scanner.scan_file(file.path()).expect("scan");
+        assert!(!issues.is_empty(), "expected at least one credential issue");
+        let has_cred = issues
+            .iter()
+            .any(|i| i.pattern_name == "suspicious_password_var");
+        assert!(has_cred, "expected suspicious_password_var issue");
+
+        // dry_run returns count but does not mutate disk
+        let cred_issues: Vec<_> = issues
+            .iter()
+            .filter(|i| i.pattern_name == "suspicious_password_var")
+            .cloned()
+            .collect();
+        let n = scanner
+            .apply_fixes(file.path(), &cred_issues, true)
+            .expect("apply dry");
+        assert_eq!(n, 1);
+        assert!(std::fs::read_to_string(file.path())
+            .unwrap()
+            .contains("supersecretvalue"));
     }
 }

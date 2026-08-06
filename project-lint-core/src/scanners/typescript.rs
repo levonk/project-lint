@@ -1,7 +1,8 @@
 /// TypeScript-specific linting rules
 /// Implements rules from job-aide typescript-rules.md
-
-use crate::scanners::detection::{DetectionIssue, FunctionCallDetector, FunctionCallRule, PatternDetector, PatternRule};
+use crate::scanners::detection::{
+    DetectionIssue, FunctionCallDetector, FunctionCallRule, PatternDetector, PatternRule,
+};
 use std::path::Path;
 use tracing::debug;
 
@@ -110,7 +111,8 @@ impl TypeScriptRuleSet {
                 name: "missing_readme".to_string(),
                 pattern: r"README\.md".to_string(),
                 severity: "info".to_string(),
-                message_template: "ℹ️  README.md found. Ensure it contains usage and examples.".to_string(),
+                message_template: "ℹ️  README.md found. Ensure it contains usage and examples."
+                    .to_string(),
                 fix_template: None,
                 case_sensitive: false,
             },
@@ -118,7 +120,8 @@ impl TypeScriptRuleSet {
                 name: "missing_jsdoc".to_string(),
                 pattern: r"export\s+(function|const|class|interface|type)\s+\w+".to_string(),
                 severity: "low".to_string(),
-                message_template: "ℹ️  Public API detected: {matched}. Add JSDoc comments.".to_string(),
+                message_template: "ℹ️  Public API detected: {matched}. Add JSDoc comments."
+                    .to_string(),
                 fix_template: None,
                 case_sensitive: false,
             },
@@ -186,29 +189,24 @@ impl TypeScriptScanner {
             file_extension_detector: PatternDetector::new(
                 TypeScriptRuleSet::file_extension_rules(),
             )?,
-            path_alias_detector: PatternDetector::new(
-                TypeScriptRuleSet::path_alias_rules(),
-            )?,
+            path_alias_detector: PatternDetector::new(TypeScriptRuleSet::path_alias_rules())?,
             module_system_detector: FunctionCallDetector::new(
                 TypeScriptRuleSet::module_system_rules(),
             ),
-            code_style_detector: PatternDetector::new(
-                TypeScriptRuleSet::code_style_rules(),
-            )?,
+            code_style_detector: PatternDetector::new(TypeScriptRuleSet::code_style_rules())?,
             package_structure_detector: PatternDetector::new(
                 TypeScriptRuleSet::package_structure_rules(),
             )?,
-            eslint_config_detector: PatternDetector::new(
-                TypeScriptRuleSet::eslint_config_rules(),
-            )?,
-            test_file_detector: PatternDetector::new(
-                TypeScriptRuleSet::test_file_rules(),
-            )?,
+            eslint_config_detector: PatternDetector::new(TypeScriptRuleSet::eslint_config_rules())?,
+            test_file_detector: PatternDetector::new(TypeScriptRuleSet::test_file_rules())?,
         })
     }
 
     /// Scan a TypeScript/JavaScript file for violations
-    pub fn scan_file(&self, file_path: &Path) -> Result<Vec<DetectionIssue>, Box<dyn std::error::Error>> {
+    pub fn scan_file(
+        &self,
+        file_path: &Path,
+    ) -> Result<Vec<DetectionIssue>, Box<dyn std::error::Error>> {
         let mut all_issues = Vec::new();
         let file_name = file_path.file_name().unwrap_or_default().to_string_lossy();
 
@@ -257,7 +255,9 @@ impl TypeScriptScanner {
         issues: &[DetectionIssue],
         dry_run: bool,
     ) -> Result<usize, Box<dyn std::error::Error>> {
-        let (_, fixes_applied) = self.code_style_detector.apply_fixes(file_path, issues, dry_run)?;
+        let (_, fixes_applied) = self
+            .code_style_detector
+            .apply_fixes(file_path, issues, dry_run)?;
         Ok(fixes_applied)
     }
 }
@@ -294,5 +294,32 @@ mod tests {
     fn test_scanner_creation() {
         let scanner = TypeScriptScanner::new();
         assert!(scanner.is_ok());
+    }
+
+    #[test]
+    fn test_typescript_apply_fixes_replaces_single_quotes() {
+        use tempfile::TempDir;
+        let scanner = TypeScriptScanner::new().expect("scanner");
+        // single_quotes rule matches '...' and fix_template is "\"replacement\"";
+        // code_style_detector only runs on .ts/.js files.
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("sample.ts");
+        std::fs::write(&file, "const x = 'hello';\n").unwrap();
+
+        let issues = scanner.scan_file(&file).expect("scan");
+        let style_issues: Vec<_> = issues
+            .iter()
+            .filter(|i| i.pattern_name == "single_quotes")
+            .cloned()
+            .collect();
+        assert!(!style_issues.is_empty(), "expected single_quotes issue");
+
+        let n = scanner
+            .apply_fixes(&file, &style_issues, false)
+            .expect("apply");
+        assert_eq!(n, 1);
+        let on_disk = std::fs::read_to_string(&file).unwrap();
+        assert!(on_disk.contains("\"replacement\""));
+        assert!(!on_disk.contains("'hello'"));
     }
 }
