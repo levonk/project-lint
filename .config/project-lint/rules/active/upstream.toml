@@ -1,0 +1,24 @@
+# Upstream contribution hygiene — block direct commits to main and identity
+# leaks. The no-main-commits rule is event-driven (pre_write_code).
+name = "upstream-contribution-hygiene"
+description = "Block direct commits to main and user-identity leaks"
+enabled = true
+severity = "error"
+
+[[rules]]
+name = "no-main-commits"
+pattern = "**/*"
+triggers = ["pre_write_code"]
+check_content = false
+severity = "error"
+message = "Direct writes to main are blocked; use a feature branch and open a PR."
+
+[[rules]]
+name = "no-user-identity-leak"
+pattern = "**/*.{rs,ts,js,py,go,toml,yml,yaml,md}"
+check_content = true
+content_pattern = "(\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b)"
+condition = "contains"
+exception_pattern = "noreply|example\\.com|users\\.noreply\\.github\\.com"
+severity = "warning"
+message = "Personal email/identity detected in source; use a noreply address."

@@ -2,6 +2,7 @@
 name = "typescript"
 description = "TypeScript/Node.js project profile"
 version = "1.0.0"
+updated = "2025-01-01"
 
 [activation]
 # Activate on TypeScript projects
@@ -12,6 +13,10 @@ globs = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"]
 matches = ["typescript", "\"@types/"]
 globs = ["package.json"]
 position = "any"
+
+[enable]
+domains = []
+plugins = []
 
 [settings]
 # TypeScript-specific settings

@@ -8,6 +8,10 @@ scope = "iac"
 [activation]
 globs = ["**/*.tf", "**/*.pulumi.*"]
 
+[enable]
+domains = []
+plugins = []
+
 [checks]
 enable = [
   "iac-cloud-standards",

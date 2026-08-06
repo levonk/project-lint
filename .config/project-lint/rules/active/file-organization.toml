@@ -23,9 +23,6 @@ severity = "warning"
 
 # Source files
 "*.rs" = "src/"
-"*.py" = "src/"
-"*.js" = "src/"
-"*.ts" = "src/"
 
 [ignored_patterns]
 "node_modules/" = true

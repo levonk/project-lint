@@ -1,0 +1,53 @@
+# Dev environment practices — enforce mandatory developer UX flow from the
+# dev-environment-practices knowledge bundle.
+name = "dev-environment-practices"
+description = "Mandatory devbox/direnv/justfile tooling and shell hygiene"
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "require-devbox"
+pattern = "devbox.json"
+message = "Projects must use devbox for reproducible environments (mandatory-testing-workflow.md)."
+severity = "error"
+required = true
+
+[[rules]]
+name = "require-direnv"
+pattern = ".envrc"
+message = "Projects must use direnv for automatic environment activation (standard-developer-ux-flow.md)."
+severity = "warning"
+required = true
+
+[[rules]]
+name = "require-justfile"
+pattern = "justfile"
+message = "Projects must use a justfile as the standard task runner (standard-developer-ux-flow.md)."
+severity = "error"
+required = true
+
+[[rules]]
+name = "no-makefiles"
+pattern = "Makefile"
+message = "Prefer justfile over Makefile for task runner parity across platforms."
+severity = "warning"
+required = false
+
+[[rules]]
+name = "shell-strict-mode"
+pattern = "**/*.sh"
+check_content = true
+content_pattern = "set -euo pipefail"
+condition = "must_contain"
+severity = "warning"
+message = "Shell scripts must use 'set -euo pipefail' (shell-scripting-best-practices.md)."
+
+[[rules]]
+name = "no-npx-bunx-yarn-dlx"
+pattern = "**/*.{sh,toml,yml,yaml}"
+check_content = true
+content_pattern = "\\b(npx|bunx|yarn dlx)\\b"
+condition = "contains"
+severity = "warning"
+message = "Avoid npx/bunx/yarn dlx one-off execution; pin dev tools in devbox.json."
+triggers = ["pre_run_command", "pre_write_code"]

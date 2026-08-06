@@ -9,6 +9,10 @@ scope = "frontend"
 indicators = ["package.json"]
 globs = ["**/*.tsx", "**/*.css", "**/*.scss", "**/*.mts", "**/*.cts"]
 
+[enable]
+domains = []
+plugins = []
+
 [checks]
 enable = [
   "typescript-adr-standards",

@@ -1,0 +1,12 @@
+# Software architecture — minimal documentation requirements.
+name = "software-architecture"
+description = "Require a README at the project root"
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "require-readme"
+pattern = "README.md"
+message = "Every project must ship a README.md at its root."
+severity = "warning"
+required = true

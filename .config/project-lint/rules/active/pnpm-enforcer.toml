@@ -1,7 +1,11 @@
 # Pnpm Workspace Enforcement Rule
 # This rule detects and enforces the use of pnpm in pnpm workspaces
+name = "pnpm-enforcer"
+description = "Detects and enforces the use of pnpm in pnpm workspaces"
+enabled = true
+severity = "warning"
 
-[[rules.custom_rules]]
+[[rules]]
 name = "pnpm-workspace-enforcer"
 pattern = "*"
 triggers = ["pre_tool_use"]

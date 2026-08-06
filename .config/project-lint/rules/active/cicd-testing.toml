@@ -1,0 +1,22 @@
+# CI/CD testing practices — enforce pre-commit/CI parity and shared quality
+# scripts from the cicd-testing-practices knowledge bundle.
+name = "cicd-testing-practices"
+description = "Pre-commit/CI parity and shared quality scripts"
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "require-quality-script"
+pattern = "scripts/run-quality-checks.sh"
+message = "Projects must ship scripts/run-quality-checks.sh with FAST_MODE/FULL_MODE toggles (shared-quality-scripts.md)."
+severity = "error"
+required = true
+
+[[rules]]
+name = "standard-build-targets"
+pattern = "justfile"
+check_content = true
+content_pattern = "(^|\\n)(clean|build|test|lint|typecheck|fmt):"
+condition = "must_contain"
+severity = "warning"
+message = "justfile must define standard targets: clean, build, test, lint, typecheck, fmt."

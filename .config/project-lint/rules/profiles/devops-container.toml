@@ -9,6 +9,10 @@ scope = "devops"
 indicators = ["docker-compose.yml", "Dockerfile", "docker-compose.local.yml"]
 globs = ["**/docker-compose*.yml", "**/Dockerfile*"]
 
+[enable]
+domains = []
+plugins = []
+
 [checks]
 enable = [
   "container-security",

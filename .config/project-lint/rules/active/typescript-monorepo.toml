@@ -1,0 +1,33 @@
+# TypeScript monorepo conventions — enforce pnpm workspace, unambiguous
+# extensions, and non-bare path aliases.
+name = "typescript-monorepo"
+description = "pnpm workspace enforcement and TS import hygiene"
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "no-ambiguous-ts-extensions"
+pattern = "**/*.{ts,tsx,mts,cts}"
+check_content = true
+content_pattern = "from\\s+['\"][^'\"]+\\.(js|ts)['\"]"
+condition = "contains"
+severity = "info"
+message = "Avoid explicit .js/.ts extensions in TS imports when moduleResolution allows it."
+
+[[rules]]
+name = "no-bare-path-aliases"
+pattern = "**/*.{ts,tsx}"
+check_content = true
+content_pattern = "from\\s+['\"](\\.{1,2}/)"
+condition = "contains"
+exception_pattern = "tsconfig.json"
+severity = "info"
+message = "Prefer configured path aliases over bare relative imports in TS monorepos."
+
+[[rules]]
+name = "require-pnpm-workspace"
+pattern = "pnpm-workspace.yaml"
+message = "TypeScript monorepos must declare a pnpm-workspace.yaml."
+severity = "warning"
+required = true
+enabled_if_path_exists = "tsconfig.json"

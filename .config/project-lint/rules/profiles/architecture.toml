@@ -9,6 +9,10 @@ scope = "general"
 indicators = ["internal-docs/features"]
 globs = ["internal-docs/features/**/*.md"]
 
+[enable]
+domains = []
+plugins = []
+
 [checks]
 enable = [
   "architecture-practices",

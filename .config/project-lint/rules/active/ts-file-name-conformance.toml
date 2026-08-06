@@ -1,0 +1,72 @@
+# TypeScript file-name conformance — explicit module-system extensions.
+#
+# Source of truth:
+#   skills-src/src/current/knowledge/typescript-monorepo-best-practices/explicit-file-extensions.md
+#
+# Practice:
+#   - Ban ambiguous `.ts` / `.js` (module system hidden behind package.json `type`).
+#   - Require `.mts` (ESM), `.cts` (CJS), `.tsx` (React), `.mjs`/`.cjs` (JS), `.d.ts` (decl).
+#   - Exempt: `*.d.ts`, `*.config.ts`, `*.config.js`, `*.test.ts`, `*.test.tsx`.
+#
+# These rules always run on any project — if a project has `.ts`/`.js` files,
+# it gets flagged. No activation gate needed; the pattern match itself scopes
+# the rule to relevant files.
+#
+# Next.js / Turbopack exception (vercel/next.js#82945):
+#   Turbopack does not support `.mts` (server/client boundary detection breaks,
+#   module resolution fails). Next.js apps are forced to use `.ts`/`.tsx` until
+#   #82945 is fixed. When a `next.config.*` is detected at the project root, the
+#   `.ts`/`.js` ban rules are disabled project-wide via `disabled_if_path_exists`.
+#   This is tech debt, not an endorsed practice — track #82945 and migrate back.
+#
+# Delivery modes (all powered by this single modular rule):
+#   1. General scan    -> `project-lint lint`           (processes [[rules]], ignores `triggers`)
+#   2. Git hook        -> `project-lint install-hook --agent git-hooks`
+#                        installs pre-commit/pre-push that run `project-lint lint`
+#   3. Coding-agent    -> `project-lint install-hook --agent claude|windsurf|cursor`
+#                        installs hook.sh -> `project-lint hook --source <agent>`
+#                        the `triggers` below activate these rules on write/read events
+name = "ts-file-name-conformance"
+description = "Ban ambiguous .ts/.js extensions; require explicit .mts/.cts/.tsx/.mjs/.cjs/.d.ts. Next.js/Turbopack projects exempted per vercel/next.js#82945."
+enabled = true
+severity = "warning"
+# Event triggers for coding-agent hooks (ignored by `project-lint lint`).
+# Pre/post write: catch agents creating .ts/.js files.
+# Pre/post read: nudge when an agent opens an ambiguous file.
+triggers = [
+    "pre_write_code",
+    "post_write_code",
+    "pre_read_code",
+    "post_read_code",
+    "pre_tool_use",
+    "post_tool_use",
+]
+
+[[rules]]
+name = "ban_ambiguous_ts"
+# Broad .ts ban — exclude the legitimate .ts variants.
+pattern = "**/*.ts"
+exclude_patterns = ["**/*.d.ts", "**/*.config.ts", "**/*.test.ts"]
+message = "Ambiguous '.ts' extension. Use '.mts' (ESM), '.cts' (CJS), '.tsx' (React), '.d.ts' (decl), '.config.ts' (config), or '.test.ts' (tests). See explicit-file-extensions.md."
+severity = "warning"
+# Next.js/Turbopack exception: .ts is forced until vercel/next.js#82945 is fixed.
+disabled_if_path_exists = "next.config.*"
+
+[[rules]]
+name = "ban_ambiguous_js"
+# Broad .js ban — exclude config files.
+pattern = "**/*.js"
+exclude_patterns = ["**/*.config.js"]
+message = "Ambiguous '.js' extension. Use '.mjs' (ESM) or '.cjs' (CJS), or '.config.js' for config. See explicit-file-extensions.md."
+severity = "warning"
+# Next.js/Turbopack exception applies to the app codebase broadly.
+disabled_if_path_exists = "next.config.*"
+
+[[rules]]
+name = "ban_ambiguous_test_ts"
+# .test.ts should be .test.mts (ESM) — but exempt Next.js projects (Turbopack).
+pattern = "**/*.test.ts"
+message = "Test file uses ambiguous '.test.ts'. Prefer '.test.mts' (ESM). See vitest-testing.md. Exempt for Next.js/Turbopack projects."
+severity = "info"
+disabled_if_path_exists = "next.config.*"
+

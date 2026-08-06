@@ -1,0 +1,34 @@
+# Container security — enforce Dockerfile best practices from the
+# devsecops-codeguard knowledge bundle.
+name = "container-security"
+description = "Pin image digests, forbid COPY ., require non-root user"
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "pin-image-digests"
+pattern = "**/Dockerfile*"
+check_content = true
+content_pattern = "FROM\\s+\\S+:[^@]*$"
+condition = "contains"
+exception_pattern = "@sha256:"
+severity = "warning"
+message = "Pin container images by digest (@sha256:...) instead of mutable tags."
+
+[[rules]]
+name = "no-copy-dot"
+pattern = "**/Dockerfile*"
+check_content = true
+content_pattern = "COPY\\s+\\.\\s"
+condition = "contains"
+severity = "warning"
+message = "Avoid 'COPY .' in Dockerfiles; copy only required paths to shrink the build context."
+
+[[rules]]
+name = "require-non-root-user"
+pattern = "**/Dockerfile*"
+check_content = true
+content_pattern = "USER\\s+\\S+"
+condition = "must_contain"
+severity = "warning"
+message = "Dockerfiles must declare a non-root USER for runtime."

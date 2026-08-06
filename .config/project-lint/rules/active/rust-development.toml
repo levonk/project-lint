@@ -1,0 +1,60 @@
+# Rust development practices — enforce conventions from the
+# rust-development-practices knowledge bundle.
+name = "rust-development-practices"
+description = "Rust project structure, error-handling, and tooling conventions"
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "rust-project-structure"
+pattern = "src/lib.rs"
+message = "Rust library crates should expose a src/lib.rs public API surface."
+severity = "info"
+required = true
+enabled_if_path_exists = "Cargo.toml"
+
+[[rules]]
+name = "no-debug-println"
+pattern = "**/*.rs"
+check_content = true
+content_pattern = "dbg!\\(|println!\\(.*debug"
+condition = "contains"
+exception_pattern = "tests/"
+severity = "warning"
+message = "Avoid leaving dbg!()/debug println! in non-test Rust source."
+
+[[rules]]
+name = "require-thiserror"
+pattern = "Cargo.toml"
+check_content = true
+content_pattern = "thiserror"
+condition = "must_contain"
+enabled_if_path_exists = "Cargo.toml"
+severity = "info"
+message = "Library crates should use thiserror for custom error types (per error-handling.md)."
+
+[[rules]]
+name = "no-unwrap-in-lib"
+pattern = "src/**/*.rs"
+check_content = true
+content_pattern = "\\.unwrap\\(\\)"
+condition = "contains"
+exception_pattern = "tests/|#[cfg(test)]"
+severity = "warning"
+message = "Avoid .unwrap() in library code; use ? or expect with context."
+
+[[rules]]
+name = "require-rustfmt-config"
+pattern = "rustfmt.toml"
+message = "Rust projects should ship a rustfmt.toml to pin formatting."
+severity = "info"
+required = true
+enabled_if_path_exists = "Cargo.toml"
+
+[[rules]]
+name = "require-clippy-config"
+pattern = "clippy.toml"
+message = "Rust projects should ship a clippy.toml to pin lint configuration."
+severity = "info"
+required = true
+enabled_if_path_exists = "Cargo.toml"
