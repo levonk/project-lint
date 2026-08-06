@@ -1,6 +1,5 @@
 /// Package organization rules for monorepo structure validation
 /// Implements ADR 002: Refined Package Organization
-
 use std::path::{Path, PathBuf};
 use tracing::debug;
 

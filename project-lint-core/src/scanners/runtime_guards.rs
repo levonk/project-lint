@@ -1,6 +1,5 @@
 /// Runtime guards validation rules for browser safety
 /// Implements ADR 006: Runtime Guards for Browser-Safe Web Applications
-
 use regex::Regex;
 use std::path::Path;
 use tracing::debug;
@@ -35,8 +34,14 @@ impl RuntimeGuardsRuleSet {
 
         // Patterns for unguarded browser API access
         let patterns = vec![
-            (r#"typeof\s+window\s*!==\s*['"]undefined['"]"#, "typeof window check"),
-            (r#"typeof\s+document\s*!==\s*['"]undefined['"]"#, "typeof document check"),
+            (
+                r#"typeof\s+window\s*!==\s*['"]undefined['"]"#,
+                "typeof window check",
+            ),
+            (
+                r#"typeof\s+document\s*!==\s*['"]undefined['"]"#,
+                "typeof document check",
+            ),
             (r"window\.", "window access"),
             (r"document\.", "document access"),
             (r"navigator\.", "navigator access"),
@@ -69,13 +74,17 @@ impl RuntimeGuardsRuleSet {
     }
 
     /// Check if runtime guards are properly imported
-    pub fn check_runtime_guards_import(content: &str) -> Result<RuntimeGuardsImportValidation, String> {
+    pub fn check_runtime_guards_import(
+        content: &str,
+    ) -> Result<RuntimeGuardsImportValidation, String> {
         let has_import = content.contains("@job-aide/runtime-guards");
         let has_is_browser = content.contains("isBrowser");
         let has_assert_browser = content.contains("assertBrowser");
         let has_assert_server = content.contains("assertServer");
+        let has_typeof_window = content.contains("typeof window");
 
-        let guards_used = has_is_browser || has_assert_browser || has_assert_server;
+        let guards_used =
+            has_is_browser || has_assert_browser || has_assert_server || has_typeof_window;
 
         Ok(RuntimeGuardsImportValidation {
             has_import,
@@ -126,10 +135,8 @@ mod tests {
 const el = window.document.getElementById("app");
 "#;
 
-        let result = RuntimeGuardsRuleSet::check_unguarded_browser_access(
-            content,
-            Path::new("test.ts"),
-        );
+        let result =
+            RuntimeGuardsRuleSet::check_unguarded_browser_access(content, Path::new("test.ts"));
         assert!(result.is_ok());
 
         let violations = result.unwrap();
@@ -146,10 +153,8 @@ if (isBrowser()) {
 }
 "#;
 
-        let result = RuntimeGuardsRuleSet::check_unguarded_browser_access(
-            content,
-            Path::new("test.ts"),
-        );
+        let result =
+            RuntimeGuardsRuleSet::check_unguarded_browser_access(content, Path::new("test.ts"));
         assert!(result.is_ok());
 
         let violations = result.unwrap();
@@ -164,10 +169,8 @@ if (typeof window !== "undefined") {
 }
 "#;
 
-        let result = RuntimeGuardsRuleSet::check_unguarded_browser_access(
-            content,
-            Path::new("test.ts"),
-        );
+        let result =
+            RuntimeGuardsRuleSet::check_unguarded_browser_access(content, Path::new("test.ts"));
         assert!(result.is_ok());
 
         let violations = result.unwrap();
@@ -213,10 +216,8 @@ if (typeof window !== "undefined") {
     fn test_non_ts_file() {
         let content = "window.alert('test');";
 
-        let result = RuntimeGuardsRuleSet::check_unguarded_browser_access(
-            content,
-            Path::new("test.txt"),
-        );
+        let result =
+            RuntimeGuardsRuleSet::check_unguarded_browser_access(content, Path::new("test.txt"));
         assert!(result.is_ok());
 
         let violations = result.unwrap();

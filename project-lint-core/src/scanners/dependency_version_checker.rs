@@ -1,5 +1,5 @@
-use crate::utils::Result;
 use crate::dependency_checker::{DependencyChecker, OutdatedDependency, VersionType};
+use crate::utils::Result;
 use colored::Colorize;
 use std::path::Path;
 use tracing::{debug, info, warn};
@@ -106,7 +106,10 @@ impl DependencyVersionChecker {
         }
 
         // For now, just return false - we'll implement actual updates later
-        debug!("Would update {} to {} in {}", issue.name, issue.latest_version, issue.file_path);
+        debug!(
+            "Would update {} to {} in {}",
+            issue.name, issue.latest_version, issue.file_path
+        );
 
         Ok(false)
     }

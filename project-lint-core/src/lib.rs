@@ -7,8 +7,11 @@ pub mod utils;
 
 // Re-export main types for easier access
 pub use config::{
-    Config, CustomRule, DirectoriesConfig, ExecutionMode, FilesConfig, GitConfig, GitRuleConfig,
-    ModularRule, RuleConditions, RuleSeverity, RulesConfig, ScriptRuleConfig,
+    Config, CustomRule, DevEnvironmentFilesConfig, DirectoriesConfig, DockerfileSecurityConfig,
+    ExecutionMode, FilesConfig, GitConfig, GitRuleConfig, ModularRule,
+    PackageManagerEnforcementConfig, RuleConditions, RuleSeverity, RulesConfig,
+    RustFileNamingConfig, RustSecurityConfig, ScannerConfig, ScriptRuleConfig,
+    TypescriptMonorepoConfig, VaultSecurityConfig,
 };
 pub use hooks::{
     Decision, EventContext, EventMapper, EventType, FileEdit, HookResult, ProjectLintEvent,
@@ -16,10 +19,19 @@ pub use hooks::{
 };
 pub use scanners::{
     ast::{ASTAnalyzer, ASTIssue},
-    detection::{DetectionIssue, FunctionCallDetector, FunctionCallRule, PatternDetector, PatternRule},
+    ci_cd_parity::CiCdParityScanner,
+    dependency_version_checker::{DependencyIssue, DependencyVersionChecker, Severity},
+    detection::{
+        DetectionIssue, FunctionCallDetector, FunctionCallRule, PatternDetector, PatternRule,
+    },
+    dev_environment::DevEnvironmentScanner,
+    dockerfile_lint::DockerfileLintScanner,
     file_naming::{FileNamingScanner, NamingIssue},
     git::{check_branch_allowed, get_git_info, GitInfo},
+    rust_conventions::RustConventionsScanner,
     security::{SecurityRuleSet, SecurityScanner},
     typescript::{TypeScriptRuleSet, TypeScriptScanner},
-    dependency_version_checker::{DependencyIssue, DependencyVersionChecker, Severity},
+    typescript_monorepo::TypeScriptMonorepoScanner,
+    vault_security::VaultSecurityScanner,
+    ScannerIssue,
 };

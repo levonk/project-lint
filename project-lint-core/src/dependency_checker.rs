@@ -72,7 +72,10 @@ impl DependencyChecker {
         Ok(outdated)
     }
 
-    async fn check_cargo_dependencies(&self, project_path: &str) -> Result<Vec<OutdatedDependency>> {
+    async fn check_cargo_dependencies(
+        &self,
+        project_path: &str,
+    ) -> Result<Vec<OutdatedDependency>> {
         let mut outdated = Vec::new();
 
         for entry in WalkDir::new(project_path)

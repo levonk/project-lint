@@ -1,6 +1,5 @@
 /// Markdown frontmatter validation rules
 /// Implements ADR 20251106016: Standardized Markdown Frontmatter
-
 use regex::Regex;
 use std::path::Path;
 use tracing::debug;
@@ -9,7 +8,10 @@ pub struct MarkdownFrontmatterRuleSet;
 
 impl MarkdownFrontmatterRuleSet {
     /// Validate markdown file has proper frontmatter
-    pub fn validate_frontmatter(content: &str, file_path: &Path) -> Result<FrontmatterValidation, Vec<String>> {
+    pub fn validate_frontmatter(
+        content: &str,
+        file_path: &Path,
+    ) -> Result<FrontmatterValidation, Vec<String>> {
         let mut errors = Vec::new();
 
         // Check if file starts with frontmatter
@@ -41,7 +43,7 @@ impl MarkdownFrontmatterRuleSet {
 
             if let Some(colon_pos) = line.find(':') {
                 let key = line[..colon_pos].trim();
-                let value = line[colon_pos + 1..].trim();
+                let value = Self::strip_quotes(line[colon_pos + 1..].trim());
 
                 match key {
                     "title" => {
@@ -140,6 +142,20 @@ impl MarkdownFrontmatterRuleSet {
         id.len() == 11 && id.chars().all(|c| c.is_ascii_digit())
     }
 
+    /// Strip a single matching pair of surrounding quotes (`"` or `'`) from a
+    /// YAML scalar value. Handles `"value"`, `'value'`, and bare `value`.
+    fn strip_quotes(value: &str) -> &str {
+        let bytes = value.as_bytes();
+        if bytes.len() >= 2
+            && (bytes[0] == b'"' || bytes[0] == b'\'')
+            && bytes[0] == bytes[bytes.len() - 1]
+        {
+            &value[1..value.len() - 1]
+        } else {
+            value
+        }
+    }
+
     fn is_valid_date(date: &str) -> bool {
         // Format: YYYY-MM-DD
         let re = Regex::new(r"^\d{4}-\d{2}-\d{2}$").unwrap();
@@ -178,10 +194,8 @@ tags: ["test", "example"]
 ---
 # Content"#;
 
-        let result = MarkdownFrontmatterRuleSet::validate_frontmatter(
-            content,
-            Path::new("test.md"),
-        );
+        let result =
+            MarkdownFrontmatterRuleSet::validate_frontmatter(content, Path::new("test.md"));
         assert!(result.is_ok());
     }
 
@@ -193,10 +207,8 @@ tags: ["test"]
 ---
 # Content"#;
 
-        let result = MarkdownFrontmatterRuleSet::validate_frontmatter(
-            content,
-            Path::new("test.md"),
-        );
+        let result =
+            MarkdownFrontmatterRuleSet::validate_frontmatter(content, Path::new("test.md"));
         assert!(result.is_err());
         let errors = result.unwrap_err();
         assert!(errors.iter().any(|e| e.contains("title")));

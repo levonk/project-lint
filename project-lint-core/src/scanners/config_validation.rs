@@ -1,6 +1,5 @@
 /// Configuration file validation rules
 /// Validates tsconfig.json, eslint.config.mts, tailwind.config.ts, package.json
-
 use regex::Regex;
 use std::path::Path;
 use tracing::debug;
@@ -26,7 +25,8 @@ impl ConfigValidationRuleSet {
             violations.push(ConfigViolation {
                 file: "tsconfig.json".to_string(),
                 severity: "medium".to_string(),
-                message: "moduleResolution not configured. Recommended: \"bundler\" or \"node\"".to_string(),
+                message: "moduleResolution not configured. Recommended: \"bundler\" or \"node\""
+                    .to_string(),
             });
         }
 
@@ -60,7 +60,10 @@ impl ConfigValidationRuleSet {
     }
 
     /// Validate eslint.config.mts
-    pub fn validate_eslint_config(content: &str, file_name: &str) -> Result<Vec<ConfigViolation>, String> {
+    pub fn validate_eslint_config(
+        content: &str,
+        file_name: &str,
+    ) -> Result<Vec<ConfigViolation>, String> {
         let mut violations = Vec::new();
 
         // Check file extension
@@ -68,7 +71,8 @@ impl ConfigValidationRuleSet {
             violations.push(ConfigViolation {
                 file: file_name.to_string(),
                 severity: "high".to_string(),
-                message: "ESLint config must be named eslint.config.mts (not .ts or .js)".to_string(),
+                message: "ESLint config must be named eslint.config.mts (not .ts or .js)"
+                    .to_string(),
             });
         }
 
@@ -86,7 +90,8 @@ impl ConfigValidationRuleSet {
             violations.push(ConfigViolation {
                 file: "eslint.config.mts".to_string(),
                 severity: "medium".to_string(),
-                message: "Web project should include runtime guards plugin for browser safety".to_string(),
+                message: "Web project should include runtime guards plugin for browser safety"
+                    .to_string(),
             });
         }
 
@@ -94,7 +99,10 @@ impl ConfigValidationRuleSet {
     }
 
     /// Validate tailwind.config.ts
-    pub fn validate_tailwind_config(content: &str, file_name: &str) -> Result<Vec<ConfigViolation>, String> {
+    pub fn validate_tailwind_config(
+        content: &str,
+        file_name: &str,
+    ) -> Result<Vec<ConfigViolation>, String> {
         let mut violations = Vec::new();
 
         // Check file extension
@@ -111,7 +119,9 @@ impl ConfigValidationRuleSet {
             violations.push(ConfigViolation {
                 file: file_name.to_string(),
                 severity: "high".to_string(),
-                message: "Tailwind content configuration missing. Add content array with file patterns".to_string(),
+                message:
+                    "Tailwind content configuration missing. Add content array with file patterns"
+                        .to_string(),
             });
         }
 
@@ -120,7 +130,8 @@ impl ConfigValidationRuleSet {
             violations.push(ConfigViolation {
                 file: file_name.to_string(),
                 severity: "high".to_string(),
-                message: "Tailwind content array is empty. Add file patterns for purging".to_string(),
+                message: "Tailwind content array is empty. Add file patterns for purging"
+                    .to_string(),
             });
         }
 
@@ -136,7 +147,8 @@ impl ConfigValidationRuleSet {
             violations.push(ConfigViolation {
                 file: "package.json".to_string(),
                 severity: "high".to_string(),
-                message: "Missing \"type\" field. Add \"type\": \"module\" for ESM packages".to_string(),
+                message: "Missing \"type\" field. Add \"type\": \"module\" for ESM packages"
+                    .to_string(),
             });
         }
 
@@ -229,7 +241,8 @@ mod tests {
     #[test]
     fn test_tailwind_missing_content() {
         let content = r#"export default { theme: { extend: {} } }"#;
-        let result = ConfigValidationRuleSet::validate_tailwind_config(content, "tailwind.config.ts");
+        let result =
+            ConfigValidationRuleSet::validate_tailwind_config(content, "tailwind.config.ts");
         assert!(result.is_ok());
         let violations = result.unwrap();
         assert!(violations.iter().any(|v| v.message.contains("content")));
