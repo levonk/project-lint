@@ -47,6 +47,9 @@ fn test_custom_rules() {
             condition: None,
             required: false,
             required_if_path_exists: None,
+            disabled_if_path_exists: None,
+            enabled_if_path_exists: None,
+            exclude_patterns: vec![],
             triggers: vec![],
             mode: project_lint_core::config::ExecutionMode::LocalSync,
         });
