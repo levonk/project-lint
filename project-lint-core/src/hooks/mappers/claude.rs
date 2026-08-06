@@ -89,25 +89,118 @@ impl EventMapper for ClaudeMapper {
                 }
             }
             Decision::Allow => {
-                 if let Some(input) = result.modified_input {
-                     // Claude supports modifying input for PreToolUse
-                     response["hookSpecificOutput"] = json!({
-                         "permissionDecision": "allow",
-                         "updatedInput": input
-                     });
-                 }
+                if let Some(input) = result.modified_input {
+                    // Claude supports modifying input for PreToolUse
+                    response["hookSpecificOutput"] = json!({
+                        "permissionDecision": "allow",
+                        "updatedInput": input
+                    });
+                }
             }
             Decision::Ask => {
                 // Claude specific 'ask' behavior isn't fully standard in simple JSON output usually
                 // but we can map it to allow with a system message or deny.
                 // Re-reading docs: PreToolUse supports "permissionDecision": "ask"
-                 response["hookSpecificOutput"] = json!({
-                     "permissionDecision": "ask",
-                     "permissionDecisionReason": result.message.unwrap_or_default()
-                 });
+                response["hookSpecificOutput"] = json!({
+                    "permissionDecision": "ask",
+                    "permissionDecisionReason": result.message.unwrap_or_default()
+                });
             }
         }
 
         Ok(serde_json::to_string(&response)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hooks::Decision;
+    use serde_json::json;
+
+    #[test]
+    fn test_map_pre_tool_use_read_extracts_file_path() -> Result<()> {
+        let input = json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "s-1",
+            "cwd": "/repo",
+            "tool_name": "Read",
+            "tool_input": { "file_path": "/repo/src/lib.rs" }
+        })
+        .to_string();
+        let event = ClaudeMapper.map_event(&input)?;
+        assert_eq!(event.event_type, EventType::PreToolUse);
+        assert_eq!(event.session_id.as_deref(), Some("s-1"));
+        assert_eq!(event.context.ide_source, "claude");
+        assert_eq!(
+            event.context.file_path.as_deref(),
+            Some(std::path::Path::new("/repo/src/lib.rs"))
+        );
+        assert_eq!(event.context.tool_name.as_deref(), Some("Read"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_map_user_prompt_submit() -> Result<()> {
+        let input = json!({
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "fix the bug"
+        })
+        .to_string();
+        let event = ClaudeMapper.map_event(&input)?;
+        assert_eq!(event.event_type, EventType::PreUserPrompt);
+        assert_eq!(event.context.user_prompt.as_deref(), Some("fix the bug"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_map_unknown_event_name() -> Result<()> {
+        let input = json!({ "hook_event_name": "SomethingNew" }).to_string();
+        let event = ClaudeMapper.map_event(&input)?;
+        assert_eq!(
+            event.event_type,
+            EventType::Unknown("SomethingNew".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_response_deny_sets_continue_false() -> Result<()> {
+        let result = HookResult {
+            decision: Decision::Deny,
+            message: Some("blocked".to_string()),
+            modified_input: None,
+        };
+        let out = ClaudeMapper.format_response(result)?;
+        let v: Value = serde_json::from_str(&out)?;
+        assert_eq!(v["continue"], json!(false));
+        assert_eq!(v["stopReason"], json!("blocked"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_response_allow_with_modified_input() -> Result<()> {
+        let result = HookResult {
+            decision: Decision::Allow,
+            message: None,
+            modified_input: Some(json!({ "cmd": "echo hi" })),
+        };
+        let out = ClaudeMapper.format_response(result)?;
+        let v: Value = serde_json::from_str(&out)?;
+        assert_eq!(
+            v["hookSpecificOutput"]["permissionDecision"],
+            json!("allow")
+        );
+        assert_eq!(
+            v["hookSpecificOutput"]["updatedInput"]["cmd"],
+            json!("echo hi")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_map_invalid_json_returns_error() {
+        let result = ClaudeMapper.map_event("{ not valid json");
+        assert!(result.is_err());
     }
 }

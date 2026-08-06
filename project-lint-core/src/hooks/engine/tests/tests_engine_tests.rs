@@ -1,8 +1,8 @@
-use crate::hooks::{ProjectLintEvent, EventType, EventContext};
 use crate::config::{Config, CustomRule, RuleSeverity};
 use crate::hooks::engine::RuleEngine;
-use std::path::PathBuf;
+use crate::hooks::{EventContext, EventType, ProjectLintEvent};
 use serde_json::json;
+use std::path::PathBuf;
 
 #[test]
 fn test_pnpm_enforcement_rule() {
@@ -61,7 +61,7 @@ fn test_pnpm_enforcement_rule() {
 #[test]
 fn test_command_extraction() {
     let engine = RuleEngine::new(&Config::default());
-    
+
     // Test Windsurf format
     let windsurf_input = json!({
         "input": "npm run dev"
@@ -70,7 +70,7 @@ fn test_command_extraction() {
         engine.extract_command_from_input(&windsurf_input),
         Some("npm run dev".to_string())
     );
-    
+
     // Test Claude format
     let claude_input = json!({
         "tool_input": "npm test"
@@ -79,7 +79,7 @@ fn test_command_extraction() {
         engine.extract_command_from_input(&claude_input),
         Some("npm test".to_string())
     );
-    
+
     // Test generic format
     let generic_input = json!({
         "command": "npm build"

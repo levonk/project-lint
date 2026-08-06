@@ -43,14 +43,20 @@ impl EventMapper for WindsurfMapper {
                     context.file_path = Some(PathBuf::from(path));
                 }
                 if let Some(edits) = tool_info["edits"].as_array() {
-                    let mapped_edits = edits.iter().map(|e| {
-                        crate::hooks::FileEdit {
-                            old_string: e["old_string"].as_str().map(|s| s.to_string()),
-                            new_string: e["new_string"].as_str().unwrap_or_default().to_string(),
-                            start_line: None, // Windsurf doesn't provide line numbers directly in edits array usually, strictly string replacement
-                            end_line: None,
-                        }
-                    }).collect();
+                    let mapped_edits = edits
+                        .iter()
+                        .map(|e| {
+                            crate::hooks::FileEdit {
+                                old_string: e["old_string"].as_str().map(|s| s.to_string()),
+                                new_string: e["new_string"]
+                                    .as_str()
+                                    .unwrap_or_default()
+                                    .to_string(),
+                                start_line: None, // Windsurf doesn't provide line numbers directly in edits array usually, strictly string replacement
+                                end_line: None,
+                            }
+                        })
+                        .collect();
                     context.edits = Some(mapped_edits);
                 }
             }
@@ -95,14 +101,20 @@ impl EventMapper for WindsurfMapper {
                 if let Some(msg) = result.message {
                     eprintln!("{}", msg); // Print reason to stderr
                 }
-                response.insert("decision".to_string(), serde_json::Value::String("deny".to_string()));
+                response.insert(
+                    "decision".to_string(),
+                    serde_json::Value::String("deny".to_string()),
+                );
             }
             Decision::Warn => {
                 // Allow but show warning
                 if let Some(msg) = result.message {
                     eprintln!("⚠️  {}", msg);
                 }
-                response.insert("decision".to_string(), serde_json::Value::String("warn".to_string()));
+                response.insert(
+                    "decision".to_string(),
+                    serde_json::Value::String("warn".to_string()),
+                );
 
                 // If there's a modified input, include it for command rewriting
                 if let Some(modified_input) = result.modified_input {
@@ -114,10 +126,16 @@ impl EventMapper for WindsurfMapper {
                 if let Some(msg) = result.message {
                     println!("❓ {}", msg);
                 }
-                response.insert("decision".to_string(), serde_json::Value::String("ask".to_string()));
+                response.insert(
+                    "decision".to_string(),
+                    serde_json::Value::String("ask".to_string()),
+                );
             }
             Decision::Allow => {
-                response.insert("decision".to_string(), serde_json::Value::String("allow".to_string()));
+                response.insert(
+                    "decision".to_string(),
+                    serde_json::Value::String("allow".to_string()),
+                );
             }
         }
 
@@ -127,5 +145,101 @@ impl EventMapper for WindsurfMapper {
         } else {
             Ok("".to_string())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hooks::Decision;
+    use serde_json::json;
+
+    #[test]
+    fn test_map_pre_write_code_extracts_file_and_edits() -> Result<()> {
+        let input = json!({
+            "agent_action_name": "pre_write_code",
+            "trajectory_id": "t-1",
+            "timestamp": "2026-08-05T00:00:00Z",
+            "tool_info": {
+                "file_path": "/repo/src/main.rs",
+                "edits": [
+                    { "old_string": "a", "new_string": "b" }
+                ]
+            }
+        })
+        .to_string();
+        let event = WindsurfMapper.map_event(&input)?;
+        assert_eq!(event.event_type, EventType::PreWriteCode);
+        assert_eq!(event.session_id.as_deref(), Some("t-1"));
+        assert_eq!(event.timestamp.as_deref(), Some("2026-08-05T00:00:00Z"));
+        assert_eq!(
+            event.context.file_path.as_deref(),
+            Some(std::path::Path::new("/repo/src/main.rs"))
+        );
+        let edits = event.context.edits.expect("edits");
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].new_string, "b");
+        Ok(())
+    }
+
+    #[test]
+    fn test_map_pre_run_command_extracts_command_and_cwd() -> Result<()> {
+        let input = json!({
+            "agent_action_name": "pre_run_command",
+            "tool_info": { "command_line": "npm test", "cwd": "/repo" }
+        })
+        .to_string();
+        let event = WindsurfMapper.map_event(&input)?;
+        assert_eq!(event.event_type, EventType::PreRunCommand);
+        assert_eq!(event.context.command.as_deref(), Some("npm test"));
+        assert_eq!(
+            event.context.cwd.as_deref(),
+            Some(std::path::Path::new("/repo"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_map_unknown_action() -> Result<()> {
+        let input = json!({
+            "agent_action_name": "mystery",
+            "tool_info": {}
+        })
+        .to_string();
+        let event = WindsurfMapper.map_event(&input)?;
+        assert_eq!(event.event_type, EventType::Unknown("mystery".to_string()));
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_response_deny_emits_decision() -> Result<()> {
+        let result = HookResult {
+            decision: Decision::Deny,
+            message: Some("nope".to_string()),
+            modified_input: None,
+        };
+        let out = WindsurfMapper.format_response(result)?;
+        let v: Value = serde_json::from_str(&out)?;
+        assert_eq!(v["decision"], json!("deny"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_response_allow_emits_decision() -> Result<()> {
+        let result = HookResult {
+            decision: Decision::Allow,
+            message: None,
+            modified_input: None,
+        };
+        let out = WindsurfMapper.format_response(result)?;
+        let v: Value = serde_json::from_str(&out)?;
+        assert_eq!(v["decision"], json!("allow"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_map_invalid_json_returns_error() {
+        let result = WindsurfMapper.map_event("{ broken");
+        assert!(result.is_err());
     }
 }

@@ -1,17 +1,20 @@
-use crate::hooks::{logger::{HookLogger, HookLogEntry}, ProjectLintEvent, EventType, EventContext};
+use crate::hooks::{
+    logger::{HookLogEntry, HookLogger},
+    EventContext, EventType, ProjectLintEvent,
+};
 use crate::utils::Result;
-use tempfile::TempDir;
-use std::path::PathBuf;
 use chrono::Utc;
+use std::path::PathBuf;
+use tempfile::TempDir;
 
 #[tokio::test]
 async fn test_hook_logger_create() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let logger = HookLogger::new(Some(temp_dir.path().to_path_buf()))?;
-    
+
     // Check that log directory was created
     assert!(temp_dir.path().exists());
-    
+
     Ok(())
 }
 
@@ -19,7 +22,7 @@ async fn test_hook_logger_create() -> Result<()> {
 async fn test_log_event() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let logger = HookLogger::new(Some(temp_dir.path().to_path_buf()))?;
-    
+
     // Create a test event
     let event = ProjectLintEvent {
         event_type: EventType::PreToolUse,
@@ -34,21 +37,21 @@ async fn test_log_event() -> Result<()> {
             ..Default::default()
         },
     };
-    
+
     // Log the event
     logger.log_event(&event, "Allow", Some("Test message"), Some(10))?;
-    
+
     // Read back the logs
     let entries = logger.get_recent_logs(Some(1))?;
     assert_eq!(entries.len(), 1);
-    
+
     let entry = &entries[0];
     assert_eq!(entry.event_type, "PreToolUse");
     assert_eq!(entry.source, "test");
     assert_eq!(entry.decision, "Allow");
     assert_eq!(entry.message, Some("Test message".to_string()));
     assert_eq!(entry.duration_ms, Some(10));
-    
+
     Ok(())
 }
 
@@ -56,7 +59,7 @@ async fn test_log_event() -> Result<()> {
 async fn test_get_recent_logs_with_limit() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let logger = HookLogger::new(Some(temp_dir.path().to_path_buf()))?;
-    
+
     // Log multiple events
     for i in 0..5 {
         let event = ProjectLintEvent {
@@ -69,19 +72,19 @@ async fn test_get_recent_logs_with_limit() -> Result<()> {
                 ..Default::default()
             },
         };
-        
+
         logger.log_event(&event, "Allow", None, Some(i))?;
     }
-    
+
     // Get last 3 entries
     let entries = logger.get_recent_logs(Some(3))?;
     assert_eq!(entries.len(), 3);
-    
+
     // Should be the last 3 entries
     assert_eq!(entries[0].session_id, Some("session-2".to_string()));
     assert_eq!(entries[1].session_id, Some("session-3".to_string()));
     assert_eq!(entries[2].session_id, Some("session-4".to_string()));
-    
+
     Ok(())
 }
 
@@ -89,7 +92,7 @@ async fn test_get_recent_logs_with_limit() -> Result<()> {
 async fn test_get_stats() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let logger = HookLogger::new(Some(temp_dir.path().to_path_buf()))?;
-    
+
     // Log different types of events
     let event1 = ProjectLintEvent {
         event_type: EventType::PreToolUse,
@@ -102,7 +105,7 @@ async fn test_get_stats() -> Result<()> {
             ..Default::default()
         },
     };
-    
+
     let event2 = ProjectLintEvent {
         event_type: EventType::PostToolUse,
         session_id: Some("session-2".to_string()),
@@ -114,14 +117,14 @@ async fn test_get_stats() -> Result<()> {
             ..Default::default()
         },
     };
-    
+
     logger.log_event(&event1, "Allow", None, Some(10))?;
     logger.log_event(&event2, "Warn", None, Some(20))?;
     logger.log_event(&event1, "Deny", None, Some(30))?;
-    
+
     // Get stats
     let stats = logger.get_stats()?;
-    
+
     assert_eq!(stats.total_events, 3);
     assert_eq!(stats.event_counts.get("PreToolUse"), Some(&2));
     assert_eq!(stats.event_counts.get("PostToolUse"), Some(&1));
@@ -134,7 +137,7 @@ async fn test_get_stats() -> Result<()> {
     assert_eq!(stats.event_count_with_duration, 3);
     assert_eq!(stats.min_duration_ms, 10);
     assert_eq!(stats.max_duration_ms, 30);
-    
+
     Ok(())
 }
 
@@ -142,7 +145,7 @@ async fn test_get_stats() -> Result<()> {
 async fn test_average_duration_calculation() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let logger = HookLogger::new(Some(temp_dir.path().to_path_buf()))?;
-    
+
     // Log events with different durations
     for i in 1..=3 {
         let event = ProjectLintEvent {
@@ -155,13 +158,13 @@ async fn test_average_duration_calculation() -> Result<()> {
                 ..Default::default()
             },
         };
-        
+
         logger.log_event(&event, "Allow", None, Some(i * 10))?; // 10, 20, 30
     }
-    
+
     let stats = logger.get_stats()?;
     assert_eq!(stats.average_duration_ms(), 20.0); // (10+20+30)/3
-    
+
     Ok(())
 }
 
@@ -169,9 +172,9 @@ async fn test_average_duration_calculation() -> Result<()> {
 async fn test_empty_log_stats() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let logger = HookLogger::new(Some(temp_dir.path().to_path_buf()))?;
-    
+
     let stats = logger.get_stats()?;
-    
+
     assert_eq!(stats.total_events, 0);
     assert!(stats.event_counts.is_empty());
     assert!(stats.source_counts.is_empty());
@@ -181,6 +184,6 @@ async fn test_empty_log_stats() -> Result<()> {
     assert_eq!(stats.min_duration_ms, 0);
     assert_eq!(stats.max_duration_ms, 0);
     assert_eq!(stats.average_duration_ms(), 0.0);
-    
+
     Ok(())
 }

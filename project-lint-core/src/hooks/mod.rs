@@ -24,7 +24,7 @@ pub enum EventType {
     PostRunCommand,
 
     // Interaction
-    PreUserPrompt, // Called UserPromptSubmit in Claude, pre_user_prompt in Windsurf
+    PreUserPrompt,     // Called UserPromptSubmit in Claude, pre_user_prompt in Windsurf
     PostModelResponse, // post_cascade_response in Windsurf
 
     // Notifications/Permissions
@@ -94,7 +94,7 @@ pub struct HookResult {
 pub enum Decision {
     Allow,
     Deny,
-    Ask, // Request user confirmation
+    Ask,  // Request user confirmation
     Warn, // Allow but show warning
 }
 
@@ -113,9 +113,9 @@ pub trait EventMapper {
     fn format_response(&self, result: HookResult) -> crate::utils::Result<String>;
 }
 
-pub mod mappers;
 pub mod engine;
 pub mod logger;
+pub mod mappers;
 
 pub use engine::RuleEngine;
-pub use logger::{HookLogger, HookStats, initialize_global_logger, log_hook_event, get_hook_stats};
+pub use logger::{get_hook_stats, initialize_global_logger, log_hook_event, HookLogger, HookStats};
