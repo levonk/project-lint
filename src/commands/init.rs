@@ -1,5 +1,5 @@
-use project_lint_core::utils::Result;
 use colored::Colorize;
+use project_lint_core::utils::Result;
 use tracing::{info, warn};
 
 use project_lint_core::config::Config;

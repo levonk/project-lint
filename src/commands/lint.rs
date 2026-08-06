@@ -1,18 +1,26 @@
-use project_lint_core::utils::{Result, matches_pattern};
 use colored::Colorize;
+use glob::Pattern;
+use project_lint_core::utils::{matches_pattern, path_exists_glob, Result};
 use std::path::Path;
 use tracing::{debug, info, warn};
 use walkdir::WalkDir;
-use glob::Pattern;
 
-use project_lint_core::scanners::ast::{ASTAnalyzer, ASTIssue};
 use project_lint_core::config::{Config, ModularRule};
-use project_lint_core::scanners::dependency_version_checker::{DependencyVersionChecker, Severity as DepSeverity};
-use project_lint_core::scanners::git::{check_branch_allowed, get_git_info};
 use project_lint_core::profiles;
+use project_lint_core::scanners::ast::{ASTAnalyzer, ASTIssue};
+use project_lint_core::scanners::dependency_version_checker::{
+    DependencyVersionChecker, Severity as DepSeverity,
+};
+use project_lint_core::scanners::file_naming::FileNamingScanner;
+use project_lint_core::scanners::git::{check_branch_allowed, get_git_info};
 use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
-use project_lint_core::scanners::file_naming::FileNamingScanner;
+use project_lint_core::scanners::{
+    ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
+    dockerfile_lint::DockerfileLintScanner, rust_conventions::RustConventionsScanner,
+    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
+    ScannerIssue,
+};
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
     info!("Running linting checks on project: {}", project_path);
@@ -41,7 +49,8 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
     }
 
     // Determine active profiles
-    let active_profiles = profiles::get_active_profiles(project_path_obj, &config.active_profiles, None)?;
+    let active_profiles =
+        profiles::get_active_profiles(project_path_obj, &config.active_profiles, None)?;
     if !active_profiles.is_empty() {
         info!(
             "Active profiles: {}",
@@ -99,6 +108,82 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
     if config.is_check_enabled("dependency_versions") {
         debug!("Performing dependency version analysis");
         perform_dependency_analysis(project_path, &mut issues, apply_fixes, dry_run).await?;
+    }
+
+    // Knowledge-bundle-driven scanners (Phase 3b). Each is gated by its own
+    // check name so profiles/custom rules can disable them individually.
+    if config.is_check_enabled("rust_conventions") {
+        debug!("Performing rust conventions analysis");
+        perform_scanner_issues(
+            "Rust",
+            &RustConventionsScanner::with_forbidden_crates(
+                config
+                    .scanner_config
+                    .rust_security
+                    .as_ref()
+                    .map(|c| c.forbidden_crates.clone())
+                    .unwrap_or_default(),
+            )
+            .scan(project_path)?,
+            &mut issues,
+        );
+    }
+
+    if config.is_check_enabled("dev_environment") {
+        debug!("Performing dev environment analysis");
+        let scanner = match &config.scanner_config.dev_environment_files {
+            Some(c) => DevEnvironmentScanner::with_files(
+                c.required_files.clone(),
+                c.forbidden_files.clone(),
+            ),
+            None => DevEnvironmentScanner::new(),
+        };
+        perform_scanner_issues("DevEnv", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("ci_cd_parity") {
+        debug!("Performing CI/CD parity analysis");
+        perform_scanner_issues(
+            "CICD",
+            &CiCdParityScanner::new().scan(project_path)?,
+            &mut issues,
+        );
+    }
+
+    if config.is_check_enabled("dockerfile_lint") {
+        debug!("Performing Dockerfile lint analysis");
+        let scanner = match &config.scanner_config.dockerfile_security {
+            Some(c) => DockerfileLintScanner::with_config(
+                c.require_pinned_digests,
+                c.require_non_root_user,
+                c.forbid_copy_dot,
+            ),
+            None => DockerfileLintScanner::new(),
+        };
+        perform_scanner_issues("Docker", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("typescript_monorepo") {
+        debug!("Performing TypeScript monorepo analysis");
+        let scanner = match &config.scanner_config.typescript_monorepo {
+            Some(c) => {
+                TypeScriptMonorepoScanner::with_config(c.catalog_mode, c.allowed_extensions.clone())
+            }
+            None => TypeScriptMonorepoScanner::new(),
+        };
+        perform_scanner_issues("TSMonorepo", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("vault_security") {
+        debug!("Performing vault security analysis");
+        let scanner = match &config.scanner_config.vault_security {
+            Some(c) => VaultSecurityScanner::with_config(
+                c.required_env_prefix.clone(),
+                c.allowed_backends.clone(),
+            ),
+            None => VaultSecurityScanner::new(),
+        };
+        perform_scanner_issues("Vault", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)
@@ -194,6 +279,29 @@ fn perform_file_naming_analysis(
     }
 
     Ok(())
+}
+
+/// Format and append a batch of [`ScannerIssue`]s to the user-facing issue list.
+/// `label` is the category prefix shown in the bracketed tag (e.g. `Rust`,
+/// `DevEnv`, `CICD`).
+fn perform_scanner_issues(label: &str, scanner_issues: &[ScannerIssue], issues: &mut Vec<String>) {
+    for si in scanner_issues {
+        let icon = match si.severity.as_str() {
+            "error" => "❌",
+            "warning" => "⚠️",
+            "info" => "ℹ️",
+            _ => "⚠️",
+        };
+        let loc = if si.line > 0 {
+            format!("{}:{}", si.file, si.line)
+        } else {
+            si.file.clone()
+        };
+        issues.push(format!(
+            "{} [{}] {} ({}: {})",
+            icon, label, si.message, loc, si.rule
+        ));
+    }
 }
 
 fn perform_ast_analysis(
@@ -414,10 +522,35 @@ fn check_custom_rule(
     custom_rule: &project_lint_core::config::CustomRule,
     issues: &mut Vec<String>,
 ) -> Result<()> {
+    // Project-level activation gate: only evaluate if the marker exists.
+    if let Some(enable_spec) = &custom_rule.enabled_if_path_exists {
+        if !path_exists_glob(std::path::Path::new(project_path), enable_spec) {
+            debug!(
+                "Skipping rule '{}' because activation marker '{}' does not exist at project root",
+                custom_rule.name, enable_spec
+            );
+            return Ok(());
+        }
+    }
+
+    // Project-level kill switch: skip the whole rule if a matching file exists.
+    if let Some(disable_spec) = &custom_rule.disabled_if_path_exists {
+        if path_exists_glob(std::path::Path::new(project_path), disable_spec) {
+            debug!(
+                "Skipping rule '{}' because disable marker '{}' exists at project root",
+                custom_rule.name, disable_spec
+            );
+            return Ok(());
+        }
+    }
+
     // Check conditional requirement
     if let Some(req_path) = &custom_rule.required_if_path_exists {
         if !std::path::Path::new(project_path).join(req_path).exists() {
-            debug!("Skipping rule '{}' because required path '{}' does not exist", custom_rule.name, req_path);
+            debug!(
+                "Skipping rule '{}' because required path '{}' does not exist",
+                custom_rule.name, req_path
+            );
             return Ok(());
         }
     }
@@ -452,10 +585,35 @@ fn check_custom_rule(
 
         // Fallback to filename matching (legacy behavior)
         if !matched && matches_pattern(&file_name, &custom_rule.pattern) {
-             matched = true;
+            matched = true;
         }
 
         if matched {
+            // Per-file exclusion: skip this file if it matches any exclude pattern.
+            if !custom_rule.exclude_patterns.is_empty() {
+                let mut excluded = false;
+                for exclude in &custom_rule.exclude_patterns {
+                    if let Ok(ex_pat) = Pattern::new(exclude) {
+                        if ex_pat.matches(&relative_path_str) {
+                            excluded = true;
+                            break;
+                        }
+                    }
+                    if !excluded && matches_pattern(&file_name, exclude) {
+                        excluded = true;
+                        break;
+                    }
+                }
+                if excluded {
+                    debug!(
+                        "Rule '{}' matched '{}' but excluded by exclude_patterns",
+                        custom_rule.name,
+                        relative_path.display()
+                    );
+                    continue;
+                }
+            }
+
             found_match = true;
 
             // Check content if required
@@ -542,7 +700,7 @@ fn check_custom_rule(
     let expect_match = custom_rule.required || custom_rule.required_if_path_exists.is_some();
 
     if expect_match && !found_match {
-         let severity_icon = match custom_rule.severity {
+        let severity_icon = match custom_rule.severity {
             project_lint_core::config::RuleSeverity::Error => "❌",
             project_lint_core::config::RuleSeverity::Warning => "⚠️",
             project_lint_core::config::RuleSeverity::Info => "ℹ️",
@@ -556,11 +714,7 @@ fn check_custom_rule(
 
         issues.push(format!(
             "{} {}: {} (Missing required file matching '{}'{})",
-            severity_icon,
-            custom_rule.name,
-            custom_rule.message,
-            custom_rule.pattern,
-            context_msg
+            severity_icon, custom_rule.name, custom_rule.message, custom_rule.pattern, context_msg
         ));
     }
 
@@ -848,14 +1002,26 @@ fn perform_typescript_analysis(
                             total_fixes += fixes;
                             if fixes > 0 {
                                 if dry_run {
-                                    info!("Would fix {} TypeScript issues in {}", fixes, path.display());
+                                    info!(
+                                        "Would fix {} TypeScript issues in {}",
+                                        fixes,
+                                        path.display()
+                                    );
                                 } else {
-                                    info!("Fixed {} TypeScript issues in {}", fixes, path.display());
+                                    info!(
+                                        "Fixed {} TypeScript issues in {}",
+                                        fixes,
+                                        path.display()
+                                    );
                                 }
                             }
                         }
                         Err(e) => {
-                            debug!("Failed to apply TypeScript fixes to {}: {}", path.display(), e);
+                            debug!(
+                                "Failed to apply TypeScript fixes to {}: {}",
+                                path.display(),
+                                e
+                            );
                         }
                     }
                 }
@@ -899,9 +1065,7 @@ async fn perform_dependency_analysis(
 
                 issues.push(format!(
                     "{} [Dependencies] {} ({})",
-                    severity_icon,
-                    issue.message,
-                    issue.file_path
+                    severity_icon, issue.message, issue.file_path
                 ));
             }
 
@@ -929,4 +1093,180 @@ async fn perform_dependency_analysis(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use project_lint_core::config::{CustomRule, ExecutionMode, RuleSeverity};
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn ban_ts_rule() -> CustomRule {
+        CustomRule {
+            name: "ban_ambiguous_ts".to_string(),
+            pattern: "**/*.ts".to_string(),
+            message: "Ambiguous .ts".to_string(),
+            severity: RuleSeverity::Warning,
+            check_content: false,
+            content_pattern: None,
+            exception_pattern: None,
+            condition: None,
+            required: false,
+            required_if_path_exists: None,
+            disabled_if_path_exists: None,
+            enabled_if_path_exists: None,
+            exclude_patterns: vec![
+                "**/*.d.ts".to_string(),
+                "**/*.config.ts".to_string(),
+                "**/*.test.ts".to_string(),
+            ],
+            triggers: vec![],
+            mode: ExecutionMode::LocalSync,
+        }
+    }
+
+    #[test]
+    fn test_exclude_patterns_exempt_d_ts() -> Result<()> {
+        let dir = TempDir::new()?;
+        fs::write(dir.path().join("types.d.ts"), "export {};\n")?;
+        fs::write(dir.path().join("foo.ts"), "export {};\n")?;
+
+        let rule = ban_ts_rule();
+        let mut issues = Vec::new();
+        check_custom_rule(&dir.path().to_string_lossy(), &rule, &mut issues)?;
+
+        // foo.ts should be flagged; types.d.ts should be exempt.
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].contains("foo.ts"));
+        assert!(!issues[0].contains("types.d.ts"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_exclude_patterns_exempt_config_and_test_ts() -> Result<()> {
+        let dir = TempDir::new()?;
+        fs::write(dir.path().join("vitest.config.ts"), "export {};\n")?;
+        fs::write(dir.path().join("foo.test.ts"), "export {};\n")?;
+        fs::write(dir.path().join("bar.ts"), "export {};\n")?;
+
+        let rule = ban_ts_rule();
+        let mut issues = Vec::new();
+        check_custom_rule(&dir.path().to_string_lossy(), &rule, &mut issues)?;
+
+        // Only bar.ts should be flagged.
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].contains("bar.ts"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_disabled_if_path_exists_next_config() -> Result<()> {
+        let dir = TempDir::new()?;
+        fs::write(dir.path().join("next.config.mjs"), "export {};\n")?;
+        fs::create_dir_all(dir.path().join("app"))?;
+        fs::write(dir.path().join("app/page.ts"), "export {};\n")?;
+        fs::create_dir_all(dir.path().join("lib"))?;
+        fs::write(dir.path().join("lib/utils.ts"), "export {};\n")?;
+
+        let mut rule = ban_ts_rule();
+        rule.disabled_if_path_exists = Some("next.config.*".to_string());
+
+        let mut issues = Vec::new();
+        check_custom_rule(&dir.path().to_string_lossy(), &rule, &mut issues)?;
+
+        // Next.js project: .ts ban is disabled entirely.
+        assert!(
+            issues.is_empty(),
+            "expected no issues in Next.js project, got: {:?}",
+            issues
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_disabled_if_path_exists_no_marker_still_flags() -> Result<()> {
+        let dir = TempDir::new()?;
+        fs::create_dir_all(dir.path().join("lib"))?;
+        fs::write(dir.path().join("lib/utils.ts"), "export {};\n")?;
+
+        let mut rule = ban_ts_rule();
+        rule.disabled_if_path_exists = Some("next.config.*".to_string());
+
+        let mut issues = Vec::new();
+        check_custom_rule(&dir.path().to_string_lossy(), &rule, &mut issues)?;
+
+        // No next.config -> rule active -> utils.ts flagged.
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].contains("utils.ts"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_enabled_if_path_exists_skips_non_ts_project() -> Result<()> {
+        let dir = TempDir::new()?;
+        // No tsconfig.json -> NOT a TypeScript project -> rule skipped.
+        fs::create_dir_all(dir.path().join("src"))?;
+        fs::write(dir.path().join("src/utils.ts"), "export {};\n")?;
+        fs::write(dir.path().join("Cargo.toml"), "[package]\nname = \"foo\"\n")?;
+
+        let mut rule = ban_ts_rule();
+        rule.enabled_if_path_exists = Some("tsconfig.json".to_string());
+
+        let mut issues = Vec::new();
+        check_custom_rule(&dir.path().to_string_lossy(), &rule, &mut issues)?;
+
+        // Non-TS project (no tsconfig.json) -> rule not activated -> no issues.
+        assert!(
+            issues.is_empty(),
+            "expected no issues in non-TS project, got: {:?}",
+            issues
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_enabled_if_path_exists_activates_for_ts_project() -> Result<()> {
+        let dir = TempDir::new()?;
+        // tsconfig.json present -> TypeScript project -> rule active.
+        fs::create_dir_all(dir.path().join("src"))?;
+        fs::write(dir.path().join("src/utils.ts"), "export {};\n")?;
+        fs::write(dir.path().join("tsconfig.json"), "{}\n")?;
+
+        let mut rule = ban_ts_rule();
+        rule.enabled_if_path_exists = Some("tsconfig.json".to_string());
+
+        let mut issues = Vec::new();
+        check_custom_rule(&dir.path().to_string_lossy(), &rule, &mut issues)?;
+
+        // TS project -> rule active -> utils.ts flagged.
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].contains("utils.ts"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_enabled_and_disabled_gates_combine() -> Result<()> {
+        let dir = TempDir::new()?;
+        // TS project (tsconfig.json) BUT also Next.js (next.config.mjs) -> disabled wins.
+        fs::create_dir_all(dir.path().join("app"))?;
+        fs::write(dir.path().join("app/page.ts"), "export {};\n")?;
+        fs::write(dir.path().join("tsconfig.json"), "{}\n")?;
+        fs::write(dir.path().join("next.config.mjs"), "export {};\n")?;
+
+        let mut rule = ban_ts_rule();
+        rule.enabled_if_path_exists = Some("tsconfig.json".to_string());
+        rule.disabled_if_path_exists = Some("next.config.*".to_string());
+
+        let mut issues = Vec::new();
+        check_custom_rule(&dir.path().to_string_lossy(), &rule, &mut issues)?;
+
+        // Both gates: enabled (tsconfig exists) AND disabled (next.config exists) -> disabled wins.
+        assert!(
+            issues.is_empty(),
+            "expected no issues in Next.js TS project, got: {:?}",
+            issues
+        );
+        Ok(())
+    }
 }

@@ -1,6 +1,6 @@
-use project_lint_core::utils::Result;
 use colored::Colorize;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use project_lint_core::utils::Result;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;

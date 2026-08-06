@@ -1,9 +1,9 @@
-use project_lint_core::utils::Result;
 use clap::Args;
-use std::path::PathBuf;
-use std::fs;
+use project_lint_core::utils::Result;
 use std::env;
-use tracing::{info, warn, error};
+use std::fs;
+use std::path::PathBuf;
+use tracing::{error, info, warn};
 
 #[derive(Args)]
 pub struct InstallHookArgs {
@@ -347,7 +347,8 @@ jobs:
           echo "Security issues found"
           exit 1
         fi
-"#.to_string();
+"#
+    .to_string();
 
     let workflow_path = workflow_dir.join("project-lint.yml");
     write_hook_file(&workflow_path, &workflow_content, args.force)?;
@@ -538,7 +539,8 @@ deploy:
     name: production
     url: https://example.com
   when: manual
-"#.to_string();
+"#
+    .to_string();
 
     write_hook_file(&workflow_dir, &gitlab_ci_content, args.force)?;
 
@@ -582,7 +584,10 @@ fn get_hook_dir(custom_dir: &Option<String>, default_subdir: &str) -> Result<Pat
 
 fn write_hook_file(path: &PathBuf, content: &str, force: bool) -> Result<()> {
     if path.exists() && !force {
-        warn!("Hook file already exists at {:?}. Use --force to overwrite.", path);
+        warn!(
+            "Hook file already exists at {:?}. Use --force to overwrite.",
+            path
+        );
         return Ok(());
     }
 
@@ -604,5 +609,166 @@ fn make_executable(path: &PathBuf) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    include!("install_hook_tests.rs");
+    use project_lint_core::utils::Result;
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
+    use tempfile::TempDir;
+    use tokio::fs as async_fs;
+
+    #[tokio::test]
+    async fn test_install_windsurf_hook() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let hook_dir = temp_dir.path().join(".windsurf");
+
+        let args = InstallHookArgs {
+            agent: "windsurf".to_string(),
+            dir: Some(hook_dir.to_string_lossy().to_string()),
+            force: false,
+        };
+
+        run(args).await?;
+
+        // Check hook script was created
+        let hook_script = hook_dir.join("hook.sh");
+        assert!(hook_script.exists());
+
+        // Check script is executable
+        let metadata = fs::metadata(&hook_script)?;
+        #[cfg(unix)]
+        assert!(metadata.permissions().mode() & 0o111 != 0);
+
+        // Check config file was created
+        let config_file = hook_dir.join("config.toml");
+        assert!(config_file.exists());
+
+        // Verify script content
+        let content = fs::read_to_string(&hook_script)?;
+        assert!(content.contains("hook --source"));
+        assert!(content.contains("HOOK_TYPE=\"windsurf\""));
+        let temp_dir = TempDir::new()?;
+        let hook_dir = temp_dir.path().join(".claude");
+
+        let args = InstallHookArgs {
+            agent: "claude".to_string(),
+            dir: Some(hook_dir.to_string_lossy().to_string()),
+            force: false,
+        };
+
+        run(args).await?;
+
+        // Check hook script was created
+        let hook_script = hook_dir.join("hook.sh");
+        assert!(hook_script.exists());
+
+        // Verify script content
+        let content = fs::read_to_string(&hook_script)?;
+        assert!(content.contains("hook --source"));
+        assert!(content.contains("HOOK_TYPE=\"claude\""));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_install_cursor_hook() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let hook_dir = temp_dir.path().join(".cursor");
+
+        let args = InstallHookArgs {
+            agent: "cursor".to_string(),
+            dir: Some(hook_dir.to_string_lossy().to_string()),
+            force: false,
+        };
+
+        run(args).await?;
+
+        // Check hook script was created
+        let hook_script = hook_dir.join("hook.sh");
+        assert!(hook_script.exists());
+
+        // Verify script content
+        let content = fs::read_to_string(&hook_script)?;
+        assert!(content.contains("hook --source"));
+        assert!(content.contains("HOOK_TYPE=\"cursor\""));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_install_generic_hook() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let hook_dir = temp_dir.path().join("hooks");
+
+        let args = InstallHookArgs {
+            agent: "generic".to_string(),
+            dir: Some(hook_dir.to_string_lossy().to_string()),
+            force: false,
+        };
+
+        run(args).await?;
+
+        // Check hook script was created
+        let hook_script = hook_dir.join("project-lint-hook.sh");
+        assert!(hook_script.exists());
+
+        // Verify script content
+        let content = fs::read_to_string(&hook_script)?;
+        assert!(content.contains("hook --source"));
+        assert!(content.contains("HOOK_TYPE=\"generic\""));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_install_hook_force_overwrite() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let hook_dir = temp_dir.path().join(".windsurf");
+        fs::create_dir_all(&hook_dir)?;
+
+        // Create existing hook
+        let existing_hook = hook_dir.join("hook.sh");
+        fs::write(&existing_hook, "existing content")?;
+
+        let args = InstallHookArgs {
+            agent: "windsurf".to_string(),
+            dir: Some(hook_dir.to_string_lossy().to_string()),
+            force: false,
+        };
+
+        // Should not overwrite without force
+        run(args).await?;
+        let content = fs::read_to_string(&existing_hook)?;
+        assert_eq!(content, "existing content");
+
+        // Now with force
+        let args = InstallHookArgs {
+            agent: "windsurf".to_string(),
+            dir: Some(hook_dir.to_string_lossy().to_string()),
+            force: true,
+        };
+
+        run(args).await?;
+        let content = fs::read_to_string(&existing_hook)?;
+        assert!(content.contains("hook --source"));
+        assert!(content.contains("HOOK_TYPE=\"windsurf\""));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_install_hook_unsupported_agent() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+
+        let args = InstallHookArgs {
+            agent: "unsupported".to_string(),
+            dir: Some(temp_dir.path().to_string_lossy().to_string()),
+            force: false,
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err());
+
+        Ok(())
+    }
 }

@@ -1,13 +1,17 @@
-use project_lint_core::utils::Result;
-use project_lint_core::hooks::{EventMapper, HookResult, Decision, mappers::{WindsurfMapper, ClaudeMapper, KiroMapper}, initialize_global_logger, log_hook_event, RuleEngine};
-use project_lint_core::config::Config;
-use project_lint_core::profiles;
 use clap::Args;
+use project_lint_core::config::Config;
+use project_lint_core::hooks::{
+    initialize_global_logger, log_hook_event,
+    mappers::{ClaudeMapper, KiroMapper, WindsurfMapper},
+    Decision, EventMapper, HookResult, RuleEngine,
+};
+use project_lint_core::profiles;
+use project_lint_core::utils::Result;
 use serde_json::json;
 use std::io::{self, Read};
 use std::path::Path;
-use tracing::{debug, error, info, warn};
 use std::time::Instant;
+use tracing::{debug, error, info, warn};
 
 #[derive(Args)]
 pub struct HookArgs {
@@ -58,9 +62,12 @@ pub async fn run(args: HookArgs) -> Result<()> {
         "claude" => Box::new(ClaudeMapper),
         "kiro" => Box::new(KiroMapper),
         _ => {
-            warn!("Unknown source '{}', defaulting to Windsurf mapper", args.source);
+            warn!(
+                "Unknown source '{}', defaulting to Windsurf mapper",
+                args.source
+            );
             Box::new(WindsurfMapper)
-        },
+        }
     };
 
     // Parse event
@@ -92,7 +99,8 @@ pub async fn run(args: HookArgs) -> Result<()> {
     };
 
     // Determine active profiles for this event
-    let active_profiles = profiles::get_active_profiles(project_path, &config.active_profiles, Some(&event))?;
+    let active_profiles =
+        profiles::get_active_profiles(project_path, &config.active_profiles, Some(&event))?;
     config.active_profiles = active_profiles;
 
     // Evaluate rules
@@ -134,15 +142,24 @@ pub async fn run(args: HookArgs) -> Result<()> {
         // Store project_id in the original payload so it can be logged
         if let Some(payload) = &mut event.context.original_payload {
             if let Some(obj) = payload.as_object_mut() {
-                obj.insert("project_id".to_string(), serde_json::Value::String(project_id.clone()));
+                obj.insert(
+                    "project_id".to_string(),
+                    serde_json::Value::String(project_id.clone()),
+                );
             } else {
                 let mut map = serde_json::Map::new();
-                map.insert("project_id".to_string(), serde_json::Value::String(project_id.clone()));
+                map.insert(
+                    "project_id".to_string(),
+                    serde_json::Value::String(project_id.clone()),
+                );
                 *payload = serde_json::Value::Object(map);
             }
         } else {
             let mut map = serde_json::Map::new();
-            map.insert("project_id".to_string(), serde_json::Value::String(project_id.clone()));
+            map.insert(
+                "project_id".to_string(),
+                serde_json::Value::String(project_id.clone()),
+            );
             event.context.original_payload = Some(serde_json::Value::Object(map));
         }
     }
@@ -242,12 +259,17 @@ mod tests {
     #[test]
     fn test_hook_args_all_flags_combined() {
         let cli = TestCli::parse_from([
-            "test", "hook",
-            "--source", "claude",
+            "test",
+            "hook",
+            "--source",
+            "claude",
             "--json",
-            "--config-file", "/tmp/c.toml",
-            "--session-id", "s1",
-            "--project-id", "p1",
+            "--config-file",
+            "/tmp/c.toml",
+            "--session-id",
+            "s1",
+            "--project-id",
+            "p1",
         ]);
         match cli.command {
             TestCommands::Hook(args) => {

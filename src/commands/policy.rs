@@ -1,7 +1,7 @@
-use project_lint_core::config::Config;
-use project_lint_core::utils::Result;
 use chrono::Utc;
 use clap::{Args, Subcommand};
+use project_lint_core::config::Config;
+use project_lint_core::utils::Result;
 use serde::Serialize;
 use std::path::Path;
 use tracing::info;
@@ -82,7 +82,11 @@ async fn run_export(args: ExportArgs) -> Result<()> {
     let json = serde_json::to_string_pretty(&bundle)?;
     println!("{}", json);
 
-    info!("Exported policy bundle with {} rules and {} profiles", bundle.rules.len(), bundle.profiles.len());
+    info!(
+        "Exported policy bundle with {} rules and {} profiles",
+        bundle.rules.len(),
+        bundle.profiles.len()
+    );
 
     Ok(())
 }
