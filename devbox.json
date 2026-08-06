@@ -20,7 +20,8 @@
     "github:levonk/levonk-packages#bundle-rtk-core": "",
     "github:levonk/levonk-packages#bundle-rtk-cloud": "",
     "github:levonk/smartfo": "",
-    "clang": ""
+    "clang": "",
+    "git-secrets": ""
   },
   "shell": {
     "init_hook": [

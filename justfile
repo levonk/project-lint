@@ -68,9 +68,29 @@ doctor-internal:
 
 # Quality checks (OPTIONAL but RECOMMENDED)
 quality:
-    just lint
-    just test
-    just typecheck
+    scripts/run-quality-checks.sh
+
+# Full quality checks (CI parity): fmt + clippy + tests + doc tests + bench compile + audit
+quality-full:
+    scripts/run-quality-checks.sh --full
+
+# Formatting (REQUIRED standard target)
+fmt:
+    cargo fmt --all
+
+fmt-check:
+    cargo fmt --all -- --check
+
+# Benchmarks (compile-check only by default; `just bench-run` to execute)
+bench:
+    cargo bench --workspace --no-run
+
+bench-run:
+    cargo bench --workspace
+
+# CI entry point — used by .github/workflows/ci.yml
+ci:
+    scripts/run-quality-checks.sh --full
 
 # Language-specific commands for Rust CLI
 # Development setup (OPTIONAL)
