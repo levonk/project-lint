@@ -57,6 +57,10 @@
         }
       }
     },
+    "git-imerge": {
+      "resolved": "github:NixOS/nixpkgs/3d46470bb3030020f7e1361f33514854f5bfa86d#git-imerge",
+      "source": "nixpkg"
+    },
     "git-secrets": {
       "resolved": "github:NixOS/nixpkgs/3d46470bb3030020f7e1361f33514854f5bfa86d#git-secrets",
       "source": "nixpkg"

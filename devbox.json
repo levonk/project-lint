@@ -21,7 +21,8 @@
     "github:levonk/levonk-packages#bundle-rtk-cloud": "",
     "github:levonk/smartfo": "",
     "clang": "",
-    "git-secrets": ""
+    "git-secrets": "",
+    "git-imerge": ""
   },
   "shell": {
     "init_hook": [
