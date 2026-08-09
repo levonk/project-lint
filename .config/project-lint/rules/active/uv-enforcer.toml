@@ -1,0 +1,36 @@
+# Uv Enforcement Rule
+# uv is the DEFAULT — pip/pipx are rewritten to `uv pip`/`uvx` unless the
+# project explicitly uses a different Python package manager.
+#
+# Opt-out markers (any one disables enforcement):
+# - requirements.txt without uv.lock — traditional pip project
+# - Pipfile or Pipfile.lock — pipenv project
+# - poetry.lock — poetry project
+# - setup.py without pyproject.toml — legacy setuptools project
+#
+# Explicit opt-in (always wins over opt-out markers):
+# - uv.lock
+# - [tool.uv] section in pyproject.toml
+name = "uv-enforcer"
+description = "Rewrites pip/pipx to uv pip/uvx by default; opts out only when a different Python package manager is detected"
+enabled = true
+severity = "warning"
+
+[[rules]]
+name = "uv-workspace-enforcer"
+pattern = "*"
+triggers = ["pre_tool_use", "pre_run_command"]
+check_content = false
+severity = "warning"
+message = "uv is the default package manager. Use 'uv pip' instead of 'pip' and 'uvx' instead of 'pipx'."
+
+# The rule will automatically:
+# 1. Rewrite pip → uv pip, pipx → uvx by default
+# 2. Skip enforcement only when the project opts out via:
+#    - requirements.txt (without uv.lock)
+#    - Pipfile / Pipfile.lock (pipenv)
+#    - poetry.lock (poetry)
+#    - setup.py without pyproject.toml (legacy setuptools)
+# 3. Always enforce if uv.lock or [tool.uv] in pyproject.toml is present
+# 4. Intercept pip/pipx commands in PreToolUse and PreRunCommand events
+# 5. Show a helpful message with the rewritten command

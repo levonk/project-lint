@@ -1,5 +1,7 @@
 # Pnpm Workspace Enforcement Rule
-# This rule detects and enforces the use of pnpm in pnpm workspaces
+# This rule detects and enforces the use of pnpm in pnpm workspaces.
+# It rewrites `npm` → `pnpm`, `npx` → `pnpm dlx`, `yarn` → `pnpm`,
+# and `bun` → `pnpm` in intercepted commands.
 name = "pnpm-enforcer"
 description = "Detects and enforces the use of pnpm in pnpm workspaces"
 enabled = true
@@ -8,16 +10,17 @@ severity = "warning"
 [[rules]]
 name = "pnpm-workspace-enforcer"
 pattern = "*"
-triggers = ["pre_tool_use"]
+triggers = ["pre_tool_use", "pre_run_command"]
 check_content = false
 severity = "warning"
-message = "This project uses pnpm. Please use 'pnpm' instead of 'npm' commands."
+message = "This project uses pnpm. Please use 'pnpm' instead of 'npm'/'yarn'/'bun' and 'pnpm dlx' instead of 'npx' commands."
 
 # The rule will automatically:
 # 1. Detect if the current project is a pnpm workspace by checking:
 #    - package.json field "packageManager" starting with "pnpm"
 #    - Presence of pnpm-workspace.yaml/yml
 #    - Presence of pnpm-lock.yaml
-# 2. Intercept npm commands in PreToolUse events
-# 3. Show a helpful message with the rewritten command
-# 4. Only activates in pnpm workspaces (no false positives in npm projects)
+# 2. Intercept npm/npx/yarn/bun commands in PreToolUse and PreRunCommand events
+# 3. Rewrite npm → pnpm, npx → pnpm dlx, yarn → pnpm, bun → pnpm
+# 4. Show a helpful message with the rewritten command
+# 5. Only activates in pnpm workspaces (no false positives in npm projects)
