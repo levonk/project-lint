@@ -15,7 +15,7 @@ use tracing::{debug, error, info, warn};
 
 #[derive(Args)]
 pub struct HookArgs {
-    /// Source of the hook (windsurf, claude, kiro, generic)
+    /// Source of the hook (windsurf, claude, kiro, devin, pi, generic)
     #[arg(long, default_value = "windsurf")]
     pub source: String,
 
@@ -61,6 +61,11 @@ pub async fn run(args: HookArgs) -> Result<()> {
         "windsurf" => Box::new(WindsurfMapper),
         "claude" => Box::new(ClaudeMapper),
         "kiro" => Box::new(KiroMapper),
+        // Devin CLI and pi both use the Claude Code hooks format.
+        // The pi extension converts its in-process events to Claude format
+        // before calling project-lint, so ClaudeMapper handles both.
+        "devin" => Box::new(ClaudeMapper),
+        "pi" => Box::new(ClaudeMapper),
         _ => {
             warn!(
                 "Unknown source '{}', defaulting to Windsurf mapper",
