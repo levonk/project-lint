@@ -426,11 +426,10 @@ mod tests {
     /// Set `user.name` / `user.email` on a repo so commits work in CI/sandbox
     /// environments that don't have global git identity configured.
     fn set_identity(repo: &Repository) {
-        let _ = repo.config().and_then(|mut c| {
-            c.set_str("user.name", "test").ok();
-            c.set_str("user.email", "test@example.com").ok();
-            Ok(())
-        });
+        if let Ok(mut c) = repo.config() {
+            let _ = c.set_str("user.name", "test");
+            let _ = c.set_str("user.email", "test@example.com");
+        }
     }
 
     /// Commit `path` (a single file already on disk) in `repo` with `message`.
