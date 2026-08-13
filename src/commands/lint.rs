@@ -18,8 +18,8 @@ use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
     ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
     dockerfile_lint::DockerfileLintScanner, rust_conventions::RustConventionsScanner,
-    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
-    ScannerIssue,
+    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
+    vault_security::VaultSecurityScanner, ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -184,6 +184,15 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => VaultSecurityScanner::new(),
         };
         perform_scanner_issues("Vault", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("submodule_integrity") {
+        debug!("Performing submodule integrity analysis");
+        let scanner = match &config.scanner_config.submodule_integrity {
+            Some(c) => SubmoduleIntegrityScanner::with_config(c.check_index),
+            None => SubmoduleIntegrityScanner::new(),
+        };
+        perform_scanner_issues("Submodule", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)

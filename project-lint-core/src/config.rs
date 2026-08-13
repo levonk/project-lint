@@ -49,6 +49,8 @@ pub struct ScannerConfig {
     pub typescript_monorepo: Option<TypescriptMonorepoConfig>,
     #[serde(default)]
     pub package_manager_enforcement: Option<PackageManagerEnforcementConfig>,
+    #[serde(default)]
+    pub submodule_integrity: Option<SubmoduleIntegrityConfig>,
 }
 
 /// `[scanner_config.rust_file_naming]` — extra required/forbidden files and
@@ -126,6 +128,17 @@ pub struct PackageManagerEnforcementConfig {
     pub forbidden: Vec<String>,
     #[serde(default)]
     pub required_lockfile: Option<String>,
+}
+
+/// `[scanner_config.submodule_integrity]` — toggles for the submodule
+/// integrity scanner. By default the scanner checks the HEAD tree only; set
+/// `check_index = true` to also inspect the staged index (pre-commit gate
+/// mode).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SubmoduleIntegrityConfig {
+    /// When true, also inspect the staged index in addition to HEAD.
+    #[serde(default)]
+    pub check_index: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

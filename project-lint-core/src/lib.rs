@@ -11,7 +11,7 @@ pub use config::{
     ExecutionMode, FilesConfig, GitConfig, GitRuleConfig, ModularRule,
     PackageManagerEnforcementConfig, RuleConditions, RuleSeverity, RulesConfig,
     RustFileNamingConfig, RustSecurityConfig, ScannerConfig, ScriptRuleConfig,
-    TypescriptMonorepoConfig, VaultSecurityConfig,
+    SubmoduleIntegrityConfig, TypescriptMonorepoConfig, VaultSecurityConfig,
 };
 pub use hooks::{
     Decision, EventContext, EventMapper, EventType, FileEdit, HookResult, ProjectLintEvent,
@@ -30,6 +30,7 @@ pub use scanners::{
     git::{check_branch_allowed, get_git_info, GitInfo},
     rust_conventions::RustConventionsScanner,
     security::{SecurityRuleSet, SecurityScanner},
+    submodule_integrity::SubmoduleIntegrityScanner,
     typescript::{TypeScriptRuleSet, TypeScriptScanner},
     typescript_monorepo::TypeScriptMonorepoScanner,
     vault_security::VaultSecurityScanner,

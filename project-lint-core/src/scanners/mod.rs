@@ -12,6 +12,7 @@ pub mod package_organization;
 pub mod runtime_guards;
 pub mod rust_conventions;
 pub mod security;
+pub mod submodule_integrity;
 pub mod typescript;
 pub mod typescript_monorepo;
 pub mod vault_security;
