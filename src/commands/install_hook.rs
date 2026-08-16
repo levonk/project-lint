@@ -2,7 +2,7 @@ use clap::Args;
 use project_lint_core::utils::Result;
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{error, info, warn};
 
 #[derive(Args)]
@@ -159,15 +159,20 @@ exit $EXIT_CODE
 }
 
 async fn install_devin_hook(args: &InstallHookArgs) -> Result<()> {
-    // Devin CLI uses the Claude Code hooks format, stored in .devin/hooks.v1.json
-    // (standalone file, no wrapper key needed).
-    // See: https://cli.devin.ai/extensibility/hooks/overview
+    // Devin CLI uses a Claude-Code-compatible hooks JSON format, stored in
+    // .devin/hooks.v1.json. The runtime semantics differ from Claude Code:
+    //   - Env var: DEVIN_PROJECT_DIR (not CLAUDE_PROJECT_DIR)
+    //   - No exec form (no `args` field); `command` is always shell form (sh -c)
+    // See: https://docs.devin.ai/cli/extensibility/hooks/overview
     let hook_dir = get_hook_dir(&args.dir, ".devin")?;
     fs::create_dir_all(&hook_dir)?;
 
-    let project_lint_bin = env::current_exe()?.to_string_lossy().to_string();
+    let project_root = hook_dir
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine project root from hook dir"))?;
+    let hook_command = resolve_hook_command(project_root, "DEVIN_PROJECT_DIR")?;
 
-    // Create the hooks.v1.json file with PreToolUse hook for exec tool
+    // Create the hooks.v1.json file with PreToolUse/PostToolUse hooks for exec tool
     let hooks_content = format!(
         r#"{{
   "PreToolUse": [
@@ -176,7 +181,7 @@ async fn install_devin_hook(args: &InstallHookArgs) -> Result<()> {
       "hooks": [
         {{
           "type": "command",
-          "command": "{bin} hook --source claude"
+          "command": "{cmd}"
         }}
       ]
     }}
@@ -187,14 +192,14 @@ async fn install_devin_hook(args: &InstallHookArgs) -> Result<()> {
       "hooks": [
         {{
           "type": "command",
-          "command": "{bin} hook --source claude"
+          "command": "{cmd}"
         }}
       ]
     }}
   ]
 }}
 "#,
-        bin = project_lint_bin
+        cmd = hook_command
     );
 
     let hooks_path = hook_dir.join("hooks.v1.json");
@@ -204,6 +209,34 @@ async fn install_devin_hook(args: &InstallHookArgs) -> Result<()> {
     info!("Devin CLI reads hooks from .devin/hooks.v1.json automatically.");
     info!("Use /hooks in Devin CLI to verify the hook is loaded.");
     Ok(())
+}
+
+/// Resolve the hook command string for a generated hook config.
+///
+/// If the currently running binary is inside `<project_root>/target/{release,debug}/`,
+/// emits a `$<project_dir_var>/target/...` path so the hook resolves the binary
+/// relative to the project root on any clone (no absolute home path leak).
+/// Otherwise, emits a bare `project-lint` command that relies on `$PATH` lookup
+/// (cargo install, brew, devbox, etc.).
+///
+/// The `project_dir_var` parameter is the environment variable name the target
+/// client sets to the project root (e.g. `DEVIN_PROJECT_DIR` for Devin CLI,
+/// `CLAUDE_PROJECT_DIR` for Claude Code).
+fn resolve_hook_command(project_root: &Path, project_dir_var: &str) -> Result<String> {
+    let exe = env::current_exe()?;
+
+    if let Ok(relative) = exe.strip_prefix(project_root) {
+        let rel_str = relative.to_string_lossy();
+        if rel_str.starts_with("target/release/") || rel_str.starts_with("target/debug/") {
+            return Ok(format!(
+                "${}/{} hook --source claude",
+                project_dir_var, rel_str
+            ));
+        }
+    }
+
+    // Installed binary (cargo install, brew, etc.) — rely on PATH lookup
+    Ok("project-lint hook --source claude".to_string())
 }
 
 async fn install_pi_hook(args: &InstallHookArgs) -> Result<()> {
@@ -961,7 +994,48 @@ mod tests {
             .expect("command should be a string");
         assert!(pre_tool_hooks.contains("hook --source claude"));
 
+        // Verify no absolute path leak — command must not start with /
+        // (should be either bare "project-lint" or "$DEVIN_PROJECT_DIR/...")
+        assert!(
+            !pre_tool_hooks.starts_with('/'),
+            "hook command must not contain an absolute path, got: {}",
+            pre_tool_hooks
+        );
+
         Ok(())
+    }
+
+    #[test]
+    fn test_resolve_hook_command_dev_build() {
+        // CARGO_MANIFEST_DIR is set by cargo during test builds and points
+        // to the directory containing the package's Cargo.toml — the project
+        // root. The test binary lives under <project_root>/target/debug/deps/,
+        // so resolve_hook_command should emit a $DEVIN_PROJECT_DIR path.
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR should be set during cargo test");
+        let project_root = Path::new(&manifest_dir);
+
+        let cmd = resolve_hook_command(project_root, "DEVIN_PROJECT_DIR")
+            .expect("resolve_hook_command should succeed");
+        assert!(
+            cmd.starts_with("$DEVIN_PROJECT_DIR/target/"),
+            "dev build should use $DEVIN_PROJECT_DIR, got: {}",
+            cmd
+        );
+        assert!(cmd.ends_with("hook --source claude"));
+    }
+
+    #[test]
+    fn test_resolve_hook_command_path_install() {
+        // When project_root is unrelated to current_exe (e.g. a tempdir),
+        // resolve_hook_command should fall back to bare PATH-based lookup.
+        let temp_dir = TempDir::new().expect("TempDir::new should work");
+        let cmd = resolve_hook_command(temp_dir.path(), "DEVIN_PROJECT_DIR")
+            .expect("resolve_hook_command should succeed");
+        assert_eq!(
+            cmd, "project-lint hook --source claude",
+            "non-dev-build should fall back to bare PATH lookup"
+        );
     }
 
     #[tokio::test]
