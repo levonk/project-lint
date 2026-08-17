@@ -27,3 +27,10 @@ Thumbs.db
 # Build artifacts
 /dist/
 /build/
+
+# Generated hook install directories (output of `project-lint install-hook`)
+.claude/
+.cursor/
+.windsurf/
+.pi/
+hooks/
