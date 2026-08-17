@@ -52,7 +52,7 @@ async fn install_windsurf_hook(args: &InstallHookArgs) -> Result<()> {
 # Windsurf hook for project-lint
 # This script intercepts tool execution and runs project-lint hooks
 
-PROJECT_LINT_BIN="{}"
+{bin_resolution}
 HOOK_TYPE="windsurf"
 
 # Read the event from stdin
@@ -65,7 +65,7 @@ EXIT_CODE=$?
 # Exit with the same code as project-lint
 exit $EXIT_CODE
 "#,
-        env::current_exe()?.display()
+        bin_resolution = shell_bin_resolution_snippet()
     );
 
     let hook_path = hook_dir.join("hook.sh");
@@ -101,7 +101,7 @@ async fn install_claude_hook(args: &InstallHookArgs) -> Result<()> {
 # Claude Code hook for project-lint
 # This script intercepts tool execution and runs project-lint hooks
 
-PROJECT_LINT_BIN="{}"
+{bin_resolution}
 HOOK_TYPE="claude"
 
 # Read the event from stdin
@@ -114,7 +114,7 @@ EXIT_CODE=$?
 # Exit with the same code as project-lint
 exit $EXIT_CODE
 "#,
-        env::current_exe()?.display()
+        bin_resolution = shell_bin_resolution_snippet()
     );
 
     let hook_path = hook_dir.join("hook.sh");
@@ -134,7 +134,7 @@ async fn install_cursor_hook(args: &InstallHookArgs) -> Result<()> {
 # Cursor hook for project-lint
 # This script intercepts tool execution and runs project-lint hooks
 
-PROJECT_LINT_BIN="{}"
+{bin_resolution}
 HOOK_TYPE="cursor"
 
 # Read the event from stdin
@@ -147,7 +147,7 @@ EXIT_CODE=$?
 # Exit with the same code as project-lint
 exit $EXIT_CODE
 "#,
-        env::current_exe()?.display()
+        bin_resolution = shell_bin_resolution_snippet()
     );
 
     let hook_path = hook_dir.join("hook.sh");
@@ -211,17 +211,19 @@ async fn install_devin_hook(args: &InstallHookArgs) -> Result<()> {
     Ok(())
 }
 
-/// Resolve the hook command string for a generated hook config.
+/// Resolve the hook command string for a generated JSON hook config.
 ///
-/// If the currently running binary is inside `<project_root>/target/{release,debug}/`,
-/// emits a `$<project_dir_var>/target/...` path so the hook resolves the binary
+/// Used by installers that emit JSON config files (Devin CLI) where the
+/// `command` field is a single shell-form string. If the currently running
+/// binary is inside `<project_root>/target/{release,debug}/`, emits a
+/// `$<project_dir_var>/target/...` path so the hook resolves the binary
 /// relative to the project root on any clone (no absolute home path leak).
-/// Otherwise, emits a bare `project-lint` command that relies on `$PATH` lookup
-/// (cargo install, brew, devbox, etc.).
+/// Otherwise, emits a bare `project-lint` command that relies on `$PATH`
+/// lookup (cargo install, brew, devbox, etc.).
 ///
-/// The `project_dir_var` parameter is the environment variable name the target
-/// client sets to the project root (e.g. `DEVIN_PROJECT_DIR` for Devin CLI,
-/// `CLAUDE_PROJECT_DIR` for Claude Code).
+/// The `project_dir_var` parameter is the environment variable name the
+/// target client sets to the project root (e.g. `DEVIN_PROJECT_DIR` for
+/// Devin CLI, `CLAUDE_PROJECT_DIR` for Claude Code).
 fn resolve_hook_command(project_root: &Path, project_dir_var: &str) -> Result<String> {
     let exe = env::current_exe()?;
 
@@ -239,6 +241,36 @@ fn resolve_hook_command(project_root: &Path, project_dir_var: &str) -> Result<St
     Ok("project-lint hook --source claude".to_string())
 }
 
+/// Shell snippet that resolves the project-lint binary at runtime without
+/// embedding any absolute path. Used by shell-script-based hook installers
+/// (windsurf, claude, cursor, generic, git-hooks).
+///
+/// The snippet checks all known project-root environment variables for a
+/// `target/{release,debug}/project-lint` dev build, then falls back to PATH
+/// lookup (`project-lint`). This makes the generated hook portable across
+/// clones and across AI coding clients without leaking `/Users/<user>/...`.
+///
+/// Known project-root env vars (per official docs as of 2026-08):
+///   - `CLAUDE_PROJECT_DIR`    (Claude Code)
+///   - `CURSOR_PROJECT_DIR`    (Cursor; also aliases `CLAUDE_PROJECT_DIR`)
+///   - `DEVIN_PROJECT_DIR`     (Devin CLI)
+///   - `$PWD`                  (fallback: git hooks run from repo root)
+fn shell_bin_resolution_snippet() -> &'static str {
+    r#"# Resolve project-lint binary at runtime (no hardcoded paths)
+# Checks dev builds relative to known project-root env vars, then PATH
+PROJECT_LINT_BIN="project-lint"
+for _root in "${CLAUDE_PROJECT_DIR:-}" "${CURSOR_PROJECT_DIR:-}" "${DEVIN_PROJECT_DIR:-}" "${PWD:-}"; do
+  if [ -n "$_root" ] && [ -x "$_root/target/release/project-lint" ]; then
+    PROJECT_LINT_BIN="$_root/target/release/project-lint"
+    break
+  fi
+  if [ -n "$_root" ] && [ -x "$_root/target/debug/project-lint" ]; then
+    PROJECT_LINT_BIN="$_root/target/debug/project-lint"
+    break
+  fi
+done"#
+}
+
 async fn install_pi_hook(args: &InstallHookArgs) -> Result<()> {
     // Pi (earendil-works/pi) uses TypeScript extensions, not shell hooks.
     // The extension subscribes to the "tool_call" event and calls project-lint
@@ -249,10 +281,7 @@ async fn install_pi_hook(args: &InstallHookArgs) -> Result<()> {
     let extensions_dir = hook_dir.join("extensions");
     fs::create_dir_all(&extensions_dir)?;
 
-    let project_lint_bin = env::current_exe()?.to_string_lossy().to_string();
-
-    let extension_content = format!(
-        r#"// project-lint hook extension for pi
+    let extension_content = r#"// project-lint hook extension for pi
 // Auto-generated by `project-lint install-hook --agent pi`
 //
 // This extension bridges pi's in-process tool_call event to project-lint's
@@ -263,82 +292,122 @@ async fn install_pi_hook(args: &InstallHookArgs) -> Result<()> {
 // To install globally instead of project-local, copy this file to:
 //   ~/.pi/agent/extensions/project-lint-hook.ts
 
-import type {{ ExtensionAPI }} from "@earendil-works/pi-coding-agent";
-import {{ spawn }} from "node:child_process";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const PROJECT_LINT_BIN = process.env.PROJECT_LINT_BIN || "{bin}";
+// Resolve the project-lint binary at runtime without embedding any
+// absolute path. Checks dev builds relative to known project-root env
+// vars and the extension's own location, then falls back to PATH.
+function resolveProjectLintBin(): string {
+  // Explicit override
+  if (process.env.PROJECT_LINT_BIN) return process.env.PROJECT_LINT_BIN;
 
-export default function (pi: ExtensionAPI) {{
-  pi.on("tool_call", async (event, _ctx) => {{
+  // Check known project-root env vars (per official docs as of 2026-08)
+  const rootVars = [
+    "CLAUDE_PROJECT_DIR",
+    "CURSOR_PROJECT_DIR",
+    "DEVIN_PROJECT_DIR",
+  ];
+  for (const v of rootVars) {
+    const root = process.env[v];
+    if (!root) continue;
+    for (const profile of ["release", "debug"]) {
+      const candidate = join(root, "target", profile, "project-lint");
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+
+  // Walk up from this extension's directory to find target/{release,debug}/
+  // Extension lives at <project_root>/.pi/extensions/project-lint-hook.ts
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 10; i++) {
+    for (const profile of ["release", "debug"]) {
+      const candidate = join(dir, "target", profile, "project-lint");
+      if (existsSync(candidate)) return candidate;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  // Fallback: rely on PATH lookup via spawn
+  return "project-lint";
+}
+
+const PROJECT_LINT_BIN = resolveProjectLintBin();
+
+export default function (pi: ExtensionAPI) {
+  pi.on("tool_call", async (event, _ctx) => {
     // Convert pi's tool_call event to Claude Code hook format
-    const hookPayload = JSON.stringify({{
+    const hookPayload = JSON.stringify({
       hook_event_name: "PreToolUse",
       tool_name: event.toolName,
       tool_input: event.input,
-    }});
+    });
 
-    return new Promise((resolve) => {{
-      const child = spawn(PROJECT_LINT_BIN, ["hook", "--source", "claude"], {{
+    return new Promise((resolve) => {
+      const child = spawn(PROJECT_LINT_BIN, ["hook", "--source", "claude"], {
         stdio: ["pipe", "pipe", "pipe"],
-      }});
+      });
 
       let stdout = "";
       let stderr = "";
 
-      child.stdout.on("data", (data: Buffer) => {{ stdout += data.toString(); }});
-      child.stderr.on("data", (data: Buffer) => {{ stderr += data.toString(); }});
+      child.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
+      child.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
 
-      child.on("close", (code: number | null) => {{
-        try {{
-          if (stdout.trim()) {{
+      child.on("close", (code: number | null) => {
+        try {
+          if (stdout.trim()) {
             const response = JSON.parse(stdout);
 
             // Apply modified input to the tool call
-            if (response.hookSpecificOutput?.updatedInput) {{
+            if (response.hookSpecificOutput?.updatedInput) {
               const updated = response.hookSpecificOutput.updatedInput;
-              for (const [key, value] of Object.entries(updated)) {{
+              for (const [key, value] of Object.entries(updated)) {
                 (event.input as Record<string, unknown>)[key] = value;
-              }}
-            }}
+              }
+            }
 
             // Block if project-lint denied the action
-            if (response.continue === false) {{
-              resolve({{
+            if (response.continue === false) {
+              resolve({
                 block: true,
                 reason: response.stopReason || "Blocked by project-lint",
-              }});
+              });
               return;
-            }}
-          }}
-        }} catch {{
+            }
+          }
+        } catch {
           // Ignore JSON parse errors — allow the tool call through
-        }}
+        }
 
         // Exit code 2 means block in Claude Code hook protocol
-        if (code === 2) {{
-          resolve({{
+        if (code === 2) {
+          resolve({
             block: true,
             reason: stderr.trim() || "Blocked by project-lint",
-          }});
+          });
           return;
-        }}
+        }
 
         resolve(undefined);
-      }});
+      });
 
-      child.on("error", () => {{
+      child.on("error", () => {
         // If project-lint binary is not found, silently allow the tool call
         resolve(undefined);
-      }});
+      });
 
       child.stdin.write(hookPayload);
       child.stdin.end();
-    }});
-  }});
-}}
-"#,
-        bin = project_lint_bin
-    );
+    });
+  });
+}
+"#;
 
     let extension_path = extensions_dir.join("project-lint-hook.ts");
     write_hook_file(&extension_path, &extension_content, args.force)?;
@@ -358,7 +427,7 @@ async fn install_generic_hook(args: &InstallHookArgs) -> Result<()> {
 # Generic AI agent hook for project-lint
 # This script intercepts tool execution and runs project-lint hooks
 
-PROJECT_LINT_BIN="{}"
+{bin_resolution}
 HOOK_TYPE="generic"
 
 # Read the event from stdin
@@ -371,7 +440,7 @@ EXIT_CODE=$?
 # Exit with the same code as project-lint
 exit $EXIT_CODE
 "#,
-        env::current_exe()?.display()
+        bin_resolution = shell_bin_resolution_snippet()
     );
 
     let hook_path = hook_dir.join("project-lint-hook.sh");
@@ -387,15 +456,13 @@ async fn install_git_hooks(args: &InstallHookArgs) -> Result<()> {
     let hooks_dir = git_dir.join("hooks");
     fs::create_dir_all(&hooks_dir)?;
 
-    let project_lint_bin = env::current_exe()?.to_string_lossy().to_string();
-
     // Install pre-commit hook
     let pre_commit_content = format!(
         r#"#!/bin/bash
 # Pre-commit hook for project-lint
 # Runs project-lint before committing changes
 
-PROJECT_LINT_BIN="{}"
+{bin_resolution}
 
 # Run project-lint on staged files
 echo "Running project-lint pre-commit checks..."
@@ -421,7 +488,7 @@ fi
 echo "✅ project-lint checks passed"
 exit 0
 "#,
-        project_lint_bin
+        bin_resolution = shell_bin_resolution_snippet()
     );
 
     let pre_commit_path = hooks_dir.join("pre-commit");
@@ -434,7 +501,7 @@ exit 0
 # Pre-push hook for project-lint
 # Runs comprehensive project-lint checks before pushing
 
-PROJECT_LINT_BIN="{}"
+{bin_resolution}
 
 # Run full project-lint check
 echo "Running project-lint pre-push checks..."
@@ -451,7 +518,7 @@ fi
 echo "✅ project-lint checks passed"
 exit 0
 "#,
-        project_lint_bin
+        bin_resolution = shell_bin_resolution_snippet()
     );
 
     let pre_push_path = hooks_dir.join("pre-push");
@@ -840,6 +907,15 @@ mod tests {
         let content = fs::read_to_string(&hook_script)?;
         assert!(content.contains("hook --source"));
         assert!(content.contains("HOOK_TYPE=\"windsurf\""));
+        // No hardcoded absolute path — must use runtime resolution
+        assert!(
+            !content.contains("/Users/"),
+            "windsurf hook must not embed an absolute home path"
+        );
+        assert!(
+            content.contains("CLAUDE_PROJECT_DIR") || content.contains("PROJECT_LINT_BIN"),
+            "windsurf hook must use runtime bin resolution"
+        );
         let temp_dir = TempDir::new()?;
         let hook_dir = temp_dir.path().join(".claude");
 
@@ -859,6 +935,10 @@ mod tests {
         let content = fs::read_to_string(&hook_script)?;
         assert!(content.contains("hook --source"));
         assert!(content.contains("HOOK_TYPE=\"claude\""));
+        assert!(
+            !content.contains("/Users/"),
+            "claude hook must not embed an absolute home path"
+        );
 
         Ok(())
     }
@@ -884,6 +964,10 @@ mod tests {
         let content = fs::read_to_string(&hook_script)?;
         assert!(content.contains("hook --source"));
         assert!(content.contains("HOOK_TYPE=\"cursor\""));
+        assert!(
+            !content.contains("/Users/"),
+            "cursor hook must not embed an absolute home path"
+        );
 
         Ok(())
     }
@@ -909,6 +993,10 @@ mod tests {
         let content = fs::read_to_string(&hook_script)?;
         assert!(content.contains("hook --source"));
         assert!(content.contains("HOOK_TYPE=\"generic\""));
+        assert!(
+            !content.contains("/Users/"),
+            "generic hook must not embed an absolute home path"
+        );
 
         Ok(())
     }
@@ -1063,7 +1151,39 @@ mod tests {
         assert!(content.contains("spawn"));
         assert!(content.contains("hookSpecificOutput"));
         assert!(content.contains("updatedInput"));
+        // No hardcoded absolute path — must use runtime resolution
+        assert!(
+            !content.contains("/Users/"),
+            "pi extension must not embed an absolute home path"
+        );
+        assert!(
+            content.contains("resolveProjectLintBin"),
+            "pi extension must use runtime bin resolution"
+        );
 
         Ok(())
+    }
+
+    #[test]
+    fn test_shell_bin_resolution_snippet_no_absolute_path() {
+        let snippet = shell_bin_resolution_snippet();
+        // Must not contain any hardcoded absolute path
+        assert!(
+            !snippet.contains("/Users/"),
+            "shell resolution snippet must not contain /Users/"
+        );
+        assert!(
+            !snippet.contains("/home/"),
+            "shell resolution snippet must not contain /home/"
+        );
+        // Must check all known project-root env vars
+        assert!(snippet.contains("CLAUDE_PROJECT_DIR"));
+        assert!(snippet.contains("CURSOR_PROJECT_DIR"));
+        assert!(snippet.contains("DEVIN_PROJECT_DIR"));
+        // Must fall back to PATH-based lookup
+        assert!(
+            snippet.contains("\"project-lint\""),
+            "shell resolution snippet must default to PATH-based project-lint"
+        );
     }
 }
