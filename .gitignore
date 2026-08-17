@@ -28,9 +28,12 @@ Thumbs.db
 /dist/
 /build/
 
-# Generated hook install directories (output of `project-lint install-hook`)
-.claude/
-.cursor/
-.windsurf/
-.pi/
-hooks/
+# Skills directories managed by `pnpm dlx skills` (per-clone, not shared)
+.claude/skills/
+.cursor/skills/
+.windsurf/skills/
+.pi/skills/
+.devin/skills/
+
+# Generated generic hook install directory (output of `project-lint install-hook --agent generic`)
+/hooks/
