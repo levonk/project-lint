@@ -26,21 +26,21 @@
   },
   "shell": {
     "init_hook": [
-      "just bootstrap-internal"
+      "just bootstrap_impl"
     ]
   },
   "scripts": {
-    "bootstrap": "just bootstrap-internal",
-    "doctor": "just doctor-internal",
-    "clean": "just clean-internal",
-    "build": "just build-internal",
-    "lint": "just lint-internal",
-    "test": "just test-internal",
-    "typecheck": "just typecheck-internal",
-    "dev": "just dev-internal",
-    "debug": "just debug-internal",
-    "install": "just install-internal",
-    "release": "just release-internal"
+    "bootstrap": "just bootstrap_impl",
+    "doctor": "just doctor_impl",
+    "clean": "just clean_impl",
+    "build": "just build_impl",
+    "lint": "just lint_impl",
+    "test": "just test_impl",
+    "typecheck": "just typecheck_impl",
+    "dev": "just dev_impl",
+    "debug": "just debug_impl",
+    "install": "just install_impl",
+    "release": "just release_impl"
   },
   "env": {
     "RUST_LOG": "debug",

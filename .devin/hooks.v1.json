@@ -1,0 +1,24 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "exec",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "$DEVIN_PROJECT_DIR/target/release/project-lint hook --source claude"
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "exec",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "$DEVIN_PROJECT_DIR/target/release/project-lint hook --source claude"
+        }
+      ]
+    }
+  ]
+}

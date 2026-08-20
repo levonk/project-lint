@@ -27,3 +27,13 @@ Thumbs.db
 # Build artifacts
 /dist/
 /build/
+
+# Skills directories managed by `pnpm dlx skills` (per-clone, not shared)
+.claude/skills/
+.cursor/skills/
+.windsurf/skills/
+.pi/skills/
+.devin/skills/
+
+# Generated generic hook install directory (output of `project-lint install-hook --agent generic`)
+/hooks/
