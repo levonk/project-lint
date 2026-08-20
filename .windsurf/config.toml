@@ -1,0 +1,7 @@
+[hooks]
+pre_tool_use = "./hook.sh"
+post_tool_use = "./hook.sh"
+pre_read_code = "./hook.sh"
+post_read_code = "./hook.sh"
+pre_write_code = "./hook.sh"
+post_write_code = "./hook.sh"
