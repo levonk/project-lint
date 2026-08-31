@@ -51,6 +51,7 @@ fn test_custom_rules() {
             enabled_if_path_exists: None,
             exclude_patterns: vec![],
             protected_paths: vec![],
+            protected_branches: vec![],
             triggers: vec![],
             mode: project_lint_core::config::ExecutionMode::LocalSync,
         });

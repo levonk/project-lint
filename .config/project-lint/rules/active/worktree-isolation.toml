@@ -1,23 +1,32 @@
 # Worktree Isolation Enforcement Rule
 # Blocks direct edits, subagent dispatch, and stop-with-dirty-tree on protected
-# branches (main/master/trunk/develop) when running in the MAIN worktree.
+# branches (configurable via `protected_branches`, defaults to
+# main/master/trunk/develop) when running in the MAIN worktree.
 #
 # Work on protected branches is expected to happen inside a linked worktree
-# (created via `git worktree add`). This rule closes three gaps:
+# (created via `git worktree add`). This rule closes five gaps:
 #
 #   1. Pre-commit hook: the installed git pre-commit script blocks commits to
 #      a protected branch outside a linked worktree (see `install-hook --agent
-#      git-hooks` / `all`).
-#   2. PreToolUse: blocks Edit/Write/MultiEdit/NotebookEdit (direct edits) AND
+#      git-hooks` / `all`). The protected branch list is baked from config at
+#      install time.
+#   2. Pre-push hook: same worktree gate as pre-commit — push is the last
+#      chance to stop a dirty main from escaping.
+#   3. PreToolUse: blocks Edit/Write/MultiEdit/NotebookEdit (direct edits) AND
 #      Task/run_subagent (subagent dispatch) on a protected branch in the main
 #      worktree. Previously only subagent dispatch was blocked, so direct edits
 #      sailed through.
-#   3. Stop: blocks stopping with a dirty working tree on a protected branch in
-#      the main worktree. This fires on EVERY Stop event — there is no
-#      once-per-session suppression, so a recovered-but-still-dirty state will
-#      re-trigger the guard.
+#   4. PostToolUse: re-runs the protected_paths + branch check after a write
+#      lands, catching writes that slipped through (e.g. hook bypassed with
+#      --no-verify, or a tool the matcher missed).
+#   5. Stop / SubagentStop: blocks stopping (or a subagent returning) with a
+#      dirty working tree on a protected branch in the main worktree. This
+#      fires on EVERY Stop/SubagentStop event — there is no once-per-session
+#      suppression, so a recovered-but-still-dirty state will re-trigger the
+#      guard. SubagentStop fires as soon as the subagent returns, not after
+#      the whole session.
 #
-# All three checks are no-ops inside a linked worktree and on non-protected
+# All checks are no-ops inside a linked worktree and on non-protected
 # branches. Disable this rule by setting `enabled = false` or by adding a
 # `disabled_if_path_exists` marker (e.g. ".no-worktree-isolation").
 name = "worktree-isolation"
@@ -28,9 +37,14 @@ severity = "error"
 [[rules]]
 name = "worktree-isolation-enforcer"
 pattern = "*"
-triggers = ["pre_tool_use", "stop"]
+triggers = ["pre_tool_use", "post_tool_use", "stop", "subagent_stop"]
 check_content = false
 severity = "error"
+# Branches where direct work is forbidden outside a linked worktree.
+# When empty, defaults to ["main", "master", "trunk", "develop"].
+# Add your own branches (e.g. "release/prod", "production") to extend
+# protection beyond the conventional defaults. Matching is exact (not glob).
+protected_branches = ["main", "master", "trunk", "develop"]
 # Path globs that scope which write-tool events are blocked on a protected
 # branch in the main worktree. Only writes matching one of these globs are
 # blocked; edits to docs/, config, README, etc. are allowed on main.

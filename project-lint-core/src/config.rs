@@ -627,6 +627,12 @@ pub struct CustomRule {
     /// worktree. When empty, the evaluator falls back to `["src/**"]`.
     #[serde(default)]
     pub protected_paths: Vec<String>,
+    /// Branch names where direct work is forbidden outside a linked
+    /// worktree. Used by the `worktree-isolation-enforcer` rule. When
+    /// empty, the evaluator falls back to
+    /// `["main", "master", "trunk", "develop"]`.
+    #[serde(default)]
+    pub protected_branches: Vec<String>,
     #[serde(default)]
     pub triggers: Vec<String>,
     /// Execution mode for the rule: how matching events are dispatched.

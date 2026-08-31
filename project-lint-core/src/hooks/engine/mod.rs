@@ -461,21 +461,34 @@ impl<'a> RuleEngine<'a> {
     ///   denied on protected branch in main worktree. This closes the gap
     ///   where only subagent dispatch was blocked — direct edits are now
     ///   blocked too.
+    /// - **PostToolUse**: re-runs the protected_paths + branch check after a
+    ///   write lands, catching writes that slipped through (e.g. hook
+    ///   bypassed with `--no-verify`, or a tool the matcher missed).
     /// - **Stop**: denied when the protected branch in the main worktree has
     ///   a dirty working tree (uncommitted changes). This fires on **every**
     ///   Stop event — there is no once-per-session suppression, so a
     ///   recovered-but-still-dirty state will re-trigger the guard.
+    /// - **SubagentStop**: same dirty-tree guard as Stop, but fires as soon
+    ///   as a subagent returns rather than waiting for the top-level Stop.
     ///
-    /// Both checks are no-ops inside a linked worktree (where work on main is
-    /// expected to happen) and on non-protected branches.
+    /// All checks are no-ops inside a linked worktree (where work on main is
+    /// expected to happen) and on non-protected branches. The protected
+    /// branch list is configurable via `rule.protected_branches`; when empty,
+    /// it defaults to `["main", "master", "trunk", "develop"]`.
     fn evaluate_worktree_isolation_rule(
         &self,
         rule: &CustomRule,
         event: &ProjectLintEvent,
     ) -> Result<Option<DetectedIssue>> {
-        // Only act on PreToolUse and Stop events.
-        if event.event_type != EventType::PreToolUse && event.event_type != EventType::Stop {
-            return Ok(None);
+        // Act on PreToolUse (gate before write/subagent), PostToolUse
+        // (verify after write), Stop (dirty-tree guard), and SubagentStop
+        // (dirty-tree guard when a subagent returns).
+        match event.event_type {
+            EventType::PreToolUse
+            | EventType::PostToolUse
+            | EventType::Stop
+            | EventType::SubagentStop => {}
+            _ => return Ok(None),
         }
 
         let cwd_buf = event
@@ -490,12 +503,19 @@ impl<'a> RuleEngine<'a> {
             return Ok(None);
         }
 
-        // Only enforce on protected branches.
+        // Only enforce on protected branches. When the rule doesn't specify
+        // a list, fall back to the conventional defaults.
         let branch = match current_branch(cwd)? {
             Some(b) => b,
             None => return Ok(None), // detached HEAD — let git hooks handle it
         };
-        if !is_protected_branch(&branch) {
+        let configured: Vec<&str> = rule.protected_branches.iter().map(|s| s.as_str()).collect();
+        let protected: &[&str] = if configured.is_empty() {
+            &DEFAULT_PROTECTED_BRANCHES[..]
+        } else {
+            &configured[..]
+        };
+        if !is_protected_branch(&branch, protected) {
             return Ok(None);
         }
 
@@ -505,7 +525,7 @@ impl<'a> RuleEngine<'a> {
         }
 
         match event.event_type {
-            EventType::PreToolUse => {
+            EventType::PreToolUse | EventType::PostToolUse => {
                 let tool = event.context.tool_name.as_deref().unwrap_or("");
 
                 // Subagent dispatch is never scoped by paths — a subagent
@@ -545,10 +565,15 @@ impl<'a> RuleEngine<'a> {
                     };
 
                     if in_scope {
+                        let label = if event.event_type == EventType::PostToolUse {
+                            "write detected on"
+                        } else {
+                            "direct edit on"
+                        };
                         return Ok(Some(DetectedIssue {
                             name: rule.name.clone(),
                             message: format!(
-                                "🚫 Worktree isolation: direct edit on protected branch \
+                                "🚫 Worktree isolation: {label} protected branch \
                                  '{branch}' is blocked outside a linked worktree.\n\n\
                                  Create a worktree before working on {branch}:\n  \
                                  git worktree add ../{branch}-work -b work/{branch}\n\
@@ -560,20 +585,28 @@ impl<'a> RuleEngine<'a> {
                 }
                 Ok(None)
             }
-            EventType::Stop => {
-                // Block stopping with a dirty protected branch in the main worktree.
+            EventType::Stop | EventType::SubagentStop => {
+                // Block stopping with a dirty protected branch in the main
+                // worktree. SubagentStop fires when a subagent returns — the
+                // guard catches a dirty tree as soon as the subagent finishes,
+                // not after the whole session.
                 if is_dirty(cwd)? {
+                    let label = if event.event_type == EventType::SubagentStop {
+                        "subagent stop on"
+                    } else {
+                        "stopping on"
+                    };
                     return Ok(Some(DetectedIssue {
                         name: rule.name.clone(),
                         message: format!(
-                            "🚫 Worktree isolation: stopping on protected branch '{branch}' \
+                            "🚫 Worktree isolation: {label} protected branch '{branch}' \
                              with uncommitted changes in the main worktree is blocked.\n\n\
                              Either:\n  \
                              1. Move your work into a linked worktree:\n     \
                              git worktree add ../{branch}-work -b work/{branch}\n  \
                              2. Or commit/stash your changes before stopping.\n\n\
-                             This guard fires on every Stop event — it is not suppressed \
-                             after the first attempt."
+                             This guard fires on every Stop/SubagentStop event — it is \
+                             not suppressed after the first attempt."
                         ),
                         severity: rule.severity.clone(),
                     }));
@@ -774,9 +807,15 @@ fn is_subagent_tool(tool: &str) -> bool {
     )
 }
 
+/// Conventional protected branches used when a rule doesn't specify its own
+/// list. Kept as a static slice so the evaluator can borrow it without
+/// allocating.
+static DEFAULT_PROTECTED_BRANCHES: [&str; 4] = ["main", "master", "trunk", "develop"];
+
 /// Branches where direct work is forbidden outside a linked worktree.
-fn is_protected_branch(branch: &str) -> bool {
-    matches!(branch, "main" | "master" | "trunk" | "develop")
+/// `protected` is the configured list (or `DEFAULT_PROTECTED_BRANCHES`).
+fn is_protected_branch(branch: &str, protected: &[&str]) -> bool {
+    protected.contains(&branch)
 }
 
 /// Resolve the target file path of a write/edit tool event.
@@ -939,6 +978,7 @@ mod tests {
             enabled_if_path_exists: None,
             exclude_patterns: vec![],
             protected_paths: vec![],
+            protected_branches: vec![],
             triggers: vec!["pre_tool_use".to_string()],
             mode: ExecutionMode::LocalSync,
         });
@@ -1055,6 +1095,7 @@ mod tests {
             enabled_if_path_exists: None,
             exclude_patterns: vec![],
             protected_paths: vec![],
+            protected_branches: vec![],
             triggers: vec!["pre_tool_use".to_string(), "pre_run_command".to_string()],
             mode: ExecutionMode::LocalSync,
         });
@@ -1327,6 +1368,7 @@ mod tests {
             enabled_if_path_exists: None,
             exclude_patterns: vec![],
             protected_paths: vec![],
+            protected_branches: vec![],
             triggers: vec!["pre_tool_use".to_string(), "pre_run_command".to_string()],
             mode: ExecutionMode::LocalSync,
         });
@@ -1786,7 +1828,13 @@ dev-dependencies = ["pytest"]
             enabled_if_path_exists: None,
             exclude_patterns: vec![],
             protected_paths: vec!["src/**".to_string()],
-            triggers: vec!["pre_tool_use".to_string(), "stop".to_string()],
+            protected_branches: vec![],
+            triggers: vec![
+                "pre_tool_use".to_string(),
+                "post_tool_use".to_string(),
+                "stop".to_string(),
+                "subagent_stop".to_string(),
+            ],
             mode: ExecutionMode::LocalSync,
         });
         config
@@ -1834,10 +1882,17 @@ dev-dependencies = ["pytest"]
         assert!(is_write_or_subagent_tool("Edit"));
         assert!(is_write_or_subagent_tool("Task"));
         assert!(!is_write_or_subagent_tool("Read"));
-        assert!(is_protected_branch("main"));
-        assert!(is_protected_branch("master"));
-        assert!(is_protected_branch("develop"));
-        assert!(!is_protected_branch("feature/x"));
+        let defaults = &DEFAULT_PROTECTED_BRANCHES[..];
+        assert!(is_protected_branch("main", defaults));
+        assert!(is_protected_branch("master", defaults));
+        assert!(is_protected_branch("develop", defaults));
+        assert!(!is_protected_branch("feature/x", defaults));
+        // Configurable list: a custom branch like "release/*" is protected
+        // when explicitly listed, and "main" is not when omitted.
+        let custom = vec!["release/prod", "production"];
+        assert!(is_protected_branch("release/prod", &custom));
+        assert!(is_protected_branch("production", &custom));
+        assert!(!is_protected_branch("main", &custom));
     }
 
     #[test]
@@ -2177,5 +2232,192 @@ dev-dependencies = ["pytest"]
             .env_clear()
             .envs(clean_env())
             .output();
+    }
+
+    // ── configurable protected_branches ──
+
+    #[test]
+    fn test_worktree_isolation_custom_protected_branches() {
+        // A rule with protected_branches = ["release/prod", "production"]
+        // should protect those branches but NOT "main".
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path();
+        run_git(path, &["init", "-b", "production"]);
+        run_git(path, &["config", "user.email", "t@t.test"]);
+        run_git(path, &["config", "user.name", "test"]);
+        std::fs::write(path.join("README.md"), "init\n").unwrap();
+        run_git(path, &["add", "README.md"]);
+        run_git(path, &["commit", "-m", "init"]);
+
+        let mut config = Config::default();
+        config.rules.custom_rules.push(CustomRule {
+            name: "worktree-isolation-enforcer".to_string(),
+            pattern: "*".to_string(),
+            message: "worktree isolation".to_string(),
+            severity: RuleSeverity::Error,
+            check_content: false,
+            content_pattern: None,
+            exception_pattern: None,
+            condition: None,
+            required: false,
+            required_if_path_exists: None,
+            disabled_if_path_exists: None,
+            enabled_if_path_exists: None,
+            exclude_patterns: vec![],
+            protected_paths: vec!["src/**".to_string()],
+            protected_branches: vec!["release/prod".to_string(), "production".to_string()],
+            triggers: vec![
+                "pre_tool_use".to_string(),
+                "post_tool_use".to_string(),
+                "stop".to_string(),
+                "subagent_stop".to_string(),
+            ],
+            mode: ExecutionMode::LocalSync,
+        });
+        let engine = RuleEngine::new(&config);
+
+        // Edit on "production" (custom-protected) must be blocked.
+        let event = ProjectLintEvent {
+            event_type: EventType::PreToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(path.to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Edit".to_string()),
+                tool_input: Some(json!({ "file_path": "src/lib.rs" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(
+            result.decision,
+            Decision::Deny,
+            "custom-protected branch 'production' must block edits"
+        );
+
+        // Now switch to "main" — NOT in the custom list, so edits are allowed.
+        run_git(path, &["checkout", "-b", "main"]);
+        let event_main = ProjectLintEvent {
+            event_type: EventType::PreToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(path.to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Edit".to_string()),
+                tool_input: Some(json!({ "file_path": "src/lib.rs" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+        let result_main = engine.evaluate_event(&event_main).unwrap();
+        assert_eq!(
+            result_main.decision,
+            Decision::Allow,
+            "main is not in the custom protected_branches list, so edits must be allowed"
+        );
+    }
+
+    // ── SubagentStop dirty-tree guard ──
+
+    #[test]
+    fn test_worktree_isolation_subagent_stop_blocks_dirty_main() {
+        let dir = make_git_repo_on_main();
+        let path = dir.path();
+        std::fs::write(path.join("dirty.txt"), "uncommitted\n").unwrap();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::SubagentStop,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(path.to_path_buf()),
+            context: EventContext {
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(result.decision, Decision::Deny);
+        let msg = result.message.unwrap();
+        assert!(msg.contains("subagent stop"), "msg: {msg}");
+        assert!(msg.contains("main"), "msg should mention branch: {msg}");
+    }
+
+    #[test]
+    fn test_worktree_isolation_subagent_stop_allows_clean_main() {
+        let dir = make_git_repo_on_main();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::SubagentStop,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(result.decision, Decision::Allow);
+        assert!(result.message.is_none());
+    }
+
+    // ── PostToolUse write verification ──
+
+    #[test]
+    fn test_worktree_isolation_post_tool_use_catches_write_on_main() {
+        // PostToolUse should catch a write that slipped through to src/ on main.
+        let dir = make_git_repo_on_main();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::PostToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Write".to_string()),
+                tool_input: Some(json!({ "file_path": "src/lib.rs" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(result.decision, Decision::Deny);
+        let msg = result.message.unwrap();
+        assert!(msg.contains("write detected"), "msg: {msg}");
+    }
+
+    #[test]
+    fn test_worktree_isolation_post_tool_use_allows_docs_on_main() {
+        // PostToolUse for a docs/ write on main is allowed (not in protected_paths).
+        let dir = make_git_repo_on_main();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::PostToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Write".to_string()),
+                tool_input: Some(json!({ "file_path": "docs/guide.md" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(result.decision, Decision::Allow);
+        assert!(result.message.is_none());
     }
 }
