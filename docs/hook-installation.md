@@ -125,7 +125,9 @@ five points:
 4. **PostToolUse** (Edit/Write/MultiEdit/NotebookEdit): re-runs the
    `protected_paths` + branch check after a write lands, catching writes
    that slipped through (e.g. hook bypassed with `--no-verify`, or a tool
-   the matcher missed).
+   the matcher missed). Before denying, the guard verifies via
+   `git status --porcelain -- <path>` that the file actually changed on
+   disk — a no-op write (identical content) is allowed.
 5. **Stop / SubagentStop**: blocks stopping (or a subagent returning) with
    a dirty working tree on a protected branch in the main worktree. This
    fires on **every** Stop/SubagentStop event — there is no once-per-session
