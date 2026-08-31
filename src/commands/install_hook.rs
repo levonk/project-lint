@@ -7,7 +7,9 @@ use tracing::{error, info, warn};
 
 #[derive(Args)]
 pub struct InstallHookArgs {
-    /// Target agent (windsurf, claude, cursor, devin, pi, generic, git-hooks, github, gitlab)
+    /// Target agent (windsurf, claude, cursor, devin, pi, generic, git-hooks,
+    /// all, github, gitlab). Use "all" to install both git hooks and Claude
+    /// Code hooks (.claude/settings.json + hook.sh) in one command.
     #[arg(long, default_value = "windsurf")]
     pub agent: String,
 
@@ -31,6 +33,14 @@ pub async fn run(args: InstallHookArgs) -> Result<()> {
         "pi" => install_pi_hook(&args).await?,
         "generic" => install_generic_hook(&args).await?,
         "git-hooks" => install_git_hooks(&args).await?,
+        // "all" installs git hooks (pre-commit/pre-push with worktree
+        // isolation) AND Claude Code hooks (.claude/settings.json + hook.sh
+        // registered for PreToolUse/Stop) so a single command wires up both
+        // the VCS gate and the in-editor guard.
+        "all" => {
+            install_git_hooks(&args).await?;
+            install_claude_hook(&args).await?;
+        }
         "github" => install_github_workflow(&args).await?,
         "gitlab" => install_gitlab_workflow(&args).await?,
         _ => {
@@ -121,8 +131,126 @@ exit $EXIT_CODE
     write_hook_file(&hook_path, &hook_content, args.force)?;
     make_executable(&hook_path)?;
 
+    // Register the hook with Claude Code via .claude/settings.json.
+    // Claude Code auto-discovers hooks from this file. We merge our hook
+    // entries into any existing settings non-destructively so user-configured
+    // permissions and other hooks are preserved.
+    let settings_path = hook_dir.join("settings.json");
+    let hook_command = ".claude/hook.sh".to_string();
+    let merged = merge_claude_settings(&settings_path, &hook_command, args.force)?;
+    fs::write(&settings_path, merged)?;
+    info!(
+        "Claude Code hook settings registered at {:?}",
+        settings_path
+    );
     info!("Claude Code hook installed at {:?}", hook_path);
     Ok(())
+}
+
+/// Build (or merge into) a Claude Code `settings.json` the hook entries that
+/// wire `.claude/hook.sh` into the events project-lint evaluates.
+///
+/// Registered events:
+/// - `PreToolUse` matching `Edit|Write|MultiEdit|NotebookEdit|Task` — blocks
+///   direct edits and subagent dispatch on protected branches outside a
+///   linked worktree (worktree isolation), plus pnpm/uv rewrites.
+/// - `Stop` — blocks stopping with a dirty protected branch in the main
+///   worktree.
+///
+/// Merging is non-destructive: existing top-level keys (permissions, env,
+/// etc.) and pre-existing hook entries are preserved. Our entries are added
+/// only if an identical command is not already present. When `force` is set
+/// and the file exists but is not valid JSON, it is overwritten.
+fn merge_claude_settings(settings_path: &Path, hook_command: &str, force: bool) -> Result<String> {
+    use serde_json::{json, Value};
+
+    // The events + matchers we want registered.
+    let desired: Vec<(&str, Option<&str>)> = vec![
+        ("PreToolUse", Some("Edit|Write|MultiEdit|NotebookEdit|Task")),
+        ("Stop", None),
+    ];
+
+    let mut root: Value = if settings_path.exists() {
+        match fs::read_to_string(settings_path) {
+            Ok(content) if content.trim().is_empty() => json!({}),
+            Ok(content) => match serde_json::from_str::<Value>(&content) {
+                Ok(v) if v.is_object() => v,
+                // Unparseable existing file: only overwrite with --force.
+                Ok(_) | Err(_) => {
+                    if force {
+                        warn!(
+                            "Existing settings.json at {:?} is not a JSON object; overwriting (--force)",
+                            settings_path
+                        );
+                        json!({})
+                    } else {
+                        warn!(
+                            "Existing settings.json at {:?} is not a JSON object; skipping settings registration. Use --force to overwrite.",
+                            settings_path
+                        );
+                        return Ok(content);
+                    }
+                }
+            },
+            Err(_) => json!({}),
+        }
+    } else {
+        json!({})
+    };
+
+    let root_obj = root.as_object_mut().expect("root is an object");
+    let hooks_obj = root_obj
+        .entry("hooks".to_string())
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .expect("hooks is an object");
+
+    for (event, matcher) in &desired {
+        let entry = hooks_obj
+            .entry(event.to_string())
+            .or_insert_with(|| json!([]))
+            .as_array_mut()
+            .expect("hooks event is an array");
+
+        // For matcher-bearing events, reuse an existing entry with the same
+        // matcher; otherwise append a new one. For events without a matcher
+        // (Stop), reuse the first entry if it has no matcher.
+        let already_present = entry.iter().any(|e| {
+            let m = e.get("matcher").and_then(|v| v.as_str()).unwrap_or("");
+            match matcher {
+                Some(want) => m == *want && entry_has_command(e, hook_command),
+                None => m.is_empty() && entry_has_command(e, hook_command),
+            }
+        });
+
+        if already_present {
+            continue;
+        }
+
+        let mut hook_entry = json!({
+            "hooks": [
+                { "type": "command", "command": hook_command }
+            ]
+        });
+        if let Some(m) = matcher {
+            hook_entry["matcher"] = json!(m);
+        }
+        entry.push(hook_entry);
+    }
+
+    Ok(serde_json::to_string_pretty(&root)?)
+}
+
+/// True if a Claude Code hook entry already contains the given command.
+fn entry_has_command(entry: &serde_json::Value, command: &str) -> bool {
+    if let Some(hooks) = entry.get("hooks").and_then(|h| h.as_array()) {
+        for h in hooks {
+            if h.get("command").and_then(|c| c.as_str()) == Some(command) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 async fn install_cursor_hook(args: &InstallHookArgs) -> Result<()> {
@@ -463,6 +591,44 @@ async fn install_git_hooks(args: &InstallHookArgs) -> Result<()> {
 # Runs project-lint before committing changes
 
 {bin_resolution}
+
+# --- Worktree isolation gate -------------------------------------------
+# Block commits to protected branches (main/master/trunk/develop) when not
+# inside a linked git worktree. Work on protected branches must happen in a
+# worktree (git worktree add) so the main worktree stays clean.
+PROTECTED_BRANCHES="main master trunk develop"
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+GIT_DIR_PATH=$(git rev-parse --git-dir 2>/dev/null)
+GIT_COMMON_DIR_PATH=$(git rev-parse --git-common-dir 2>/dev/null)
+
+is_protected() {{
+  for b in $PROTECTED_BRANCHES; do
+    if [ "$CURRENT_BRANCH" = "$b" ]; then return 0; fi
+  done
+  return 1
+}}
+
+# A linked worktree has a git-dir that differs from the git-common-dir.
+# In the main worktree both resolve to the same path.
+is_linked_worktree() {{
+  if [ -z "$GIT_DIR_PATH" ] || [ -z "$GIT_COMMON_DIR_PATH" ]; then
+    return 1
+  fi
+  # Normalize to absolute paths for comparison
+  ABS_GIT_DIR=$(cd "$(git rev-parse --show-toplevel)" 2>/dev/null && cd "$GIT_DIR_PATH" && pwd 2>/dev/null || echo "$GIT_DIR_PATH")
+  ABS_COMMON_DIR=$(cd "$(git rev-parse --show-toplevel)" 2>/dev/null && cd "$GIT_COMMON_DIR_PATH" && pwd 2>/dev/null || echo "$GIT_COMMON_DIR_PATH")
+  [ "$ABS_GIT_DIR" != "$ABS_COMMON_DIR" ]
+}}
+
+if is_protected && ! is_linked_worktree; then
+  echo "🚫 Worktree isolation: commits to '$CURRENT_BRANCH' are blocked outside a linked worktree."
+  echo ""
+  echo "Create a worktree before working on $CURRENT_BRANCH:"
+  echo "  git worktree add ../$CURRENT_BRANCH-work -b work/$CURRENT_BRANCH"
+  echo "Then commit from inside that worktree."
+  exit 1
+fi
+# --- End worktree isolation gate ---------------------------------------
 
 # Run project-lint on staged files
 echo "Running project-lint pre-commit checks..."
@@ -939,6 +1105,131 @@ mod tests {
             !content.contains("/Users/"),
             "claude hook must not embed an absolute home path"
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_install_claude_hook_creates_settings_json() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let hook_dir = temp_dir.path().join(".claude");
+
+        let args = InstallHookArgs {
+            agent: "claude".to_string(),
+            dir: Some(hook_dir.to_string_lossy().to_string()),
+            force: false,
+        };
+
+        run(args).await?;
+
+        // settings.json must be created and register PreToolUse + Stop.
+        let settings_path = hook_dir.join("settings.json");
+        assert!(settings_path.exists(), "settings.json must be created");
+        let content = fs::read_to_string(&settings_path)?;
+        let parsed: serde_json::Value = serde_json::from_str(&content)?;
+
+        let pre = &parsed["hooks"]["PreToolUse"];
+        assert!(pre.is_array(), "PreToolUse hooks must be an array");
+        let matcher = pre[0]["matcher"].as_str().unwrap_or("");
+        assert!(
+            matcher.contains("Edit") && matcher.contains("Task"),
+            "PreToolUse matcher must cover Edit and Task, got: {matcher}"
+        );
+        let cmd = pre[0]["hooks"][0]["command"].as_str().unwrap_or("");
+        assert!(
+            cmd.contains(".claude/hook.sh"),
+            "command must point at hook.sh"
+        );
+
+        let stop = &parsed["hooks"]["Stop"];
+        assert!(stop.is_array(), "Stop hooks must be an array");
+        let stop_cmd = stop[0]["hooks"][0]["command"].as_str().unwrap_or("");
+        assert!(stop_cmd.contains(".claude/hook.sh"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_install_claude_hook_merges_existing_settings() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let hook_dir = temp_dir.path().join(".claude");
+        fs::create_dir_all(&hook_dir)?;
+
+        // Pre-existing settings with a user permission that must survive.
+        let existing = r#"{
+          "permissions": { "allow": ["Bash(git:*)"] },
+          "hooks": {
+            "PreToolUse": [
+              { "matcher": "Bash", "hooks": [{ "type": "command", "command": "echo hi" }] }
+            ]
+          }
+        }"#;
+        fs::write(hook_dir.join("settings.json"), existing)?;
+
+        let args = InstallHookArgs {
+            agent: "claude".to_string(),
+            dir: Some(hook_dir.to_string_lossy().to_string()),
+            force: false,
+        };
+        run(args).await?;
+
+        let content = fs::read_to_string(hook_dir.join("settings.json"))?;
+        let parsed: serde_json::Value = serde_json::from_str(&content)?;
+
+        // User permission preserved.
+        assert_eq!(
+            parsed["permissions"]["allow"][0],
+            serde_json::json!("Bash(git:*)")
+        );
+        // User's existing PreToolUse entry preserved.
+        let pre = parsed["hooks"]["PreToolUse"].as_array().unwrap();
+        assert!(
+            pre.iter().any(|e| e["matcher"].as_str() == Some("Bash")),
+            "existing Bash matcher must be preserved"
+        );
+        // Our entry added.
+        assert!(
+            pre.iter()
+                .any(|e| e["matcher"].as_str().unwrap_or("").contains("Edit")),
+            "project-lint Edit matcher must be added"
+        );
+        // Stop added.
+        assert!(parsed["hooks"]["Stop"].is_array());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_install_all_installs_git_and_claude_hooks() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        // `all` forwards the same --dir to both installers. With a single
+        // --dir, git hooks land at <dir>/hooks/ and claude hooks at <dir>/,
+        // which is enough to verify both were installed without mutating the
+        // process-global cwd (unsafe under parallel test threads).
+        let target = temp_dir.path().join("hooks-root");
+        fs::create_dir_all(&target)?;
+
+        let args = InstallHookArgs {
+            agent: "all".to_string(),
+            dir: Some(target.to_string_lossy().to_string()),
+            force: true,
+        };
+        run(args).await?;
+
+        // Git hooks installed.
+        let pre_commit = target.join("hooks").join("pre-commit");
+        assert!(pre_commit.exists(), "git pre-commit must be installed");
+        let pc_content = fs::read_to_string(&pre_commit)?;
+        assert!(
+            pc_content.contains("Worktree isolation"),
+            "pre-commit must contain the worktree isolation gate"
+        );
+
+        // Claude hooks installed.
+        let claude_hook = target.join("hook.sh");
+        assert!(claude_hook.exists(), ".claude/hook.sh must be installed");
+        let settings = target.join("settings.json");
+        assert!(settings.exists(), ".claude/settings.json must be installed");
 
         Ok(())
     }

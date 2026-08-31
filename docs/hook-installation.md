@@ -5,9 +5,14 @@ Project-lint can automatically install hooks for various AI coding agents to int
 ## Supported Agents
 
 - **Windsurf** - `.windsurf/` directory
-- **Claude Code** - `.claude/` directory  
+- **Claude Code** - `.claude/` directory (installs `hook.sh` **and** registers it in `.claude/settings.json`)
 - **Cursor** - `.cursor/` directory
 - **Generic** - `hooks/` directory (for custom setups)
+- **Devin CLI** - `.devin/hooks.v1.json`
+- **Pi** - `.pi/extensions/project-lint-hook.ts`
+- **Git hooks** - `.git/hooks/pre-commit` and `pre-push` (with worktree isolation gate)
+- **All** - installs **both** git hooks and Claude Code hooks in one command
+- **GitHub / GitLab** - CI workflow files
 
 ## Installation Commands
 
@@ -17,7 +22,7 @@ Project-lint can automatically install hooks for various AI coding agents to int
 # Install for Windsurf
 project-lint install-hook --agent windsurf
 
-# Install for Claude Code
+# Install for Claude Code (creates hook.sh + settings.json)
 project-lint install-hook --agent claude
 
 # Install for Cursor
@@ -25,6 +30,12 @@ project-lint install-hook --agent cursor
 
 # Install for generic/custom setup
 project-lint install-hook --agent generic
+
+# Install git hooks (pre-commit/pre-push with worktree isolation)
+project-lint install-hook --agent git-hooks
+
+# Install BOTH git hooks and Claude Code hooks at once
+project-lint install-hook --agent all
 ```
 
 ### Custom Installation Directory
@@ -56,6 +67,59 @@ post_read_code = "./hook.sh"
 pre_write_code = "./hook.sh"
 post_write_code = "./hook.sh"
 ```
+
+For Claude Code, also creates/merges `.claude/settings.json` registering the
+hook for `PreToolUse` (matching `Edit|Write|MultiEdit|NotebookEdit|Task`) and
+`Stop`. The merge is non-destructive — existing permissions and hook entries
+are preserved:
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Task",
+        "hooks": [ { "type": "command", "command": ".claude/hook.sh" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": ".claude/hook.sh" } ] }
+    ]
+  }
+}
+```
+
+### Git Hooks (pre-commit / pre-push)
+`--agent git-hooks` (or `all`) installs `.git/hooks/pre-commit` and `pre-push`.
+The pre-commit hook includes a **worktree isolation gate** that blocks commits
+to protected branches (`main`, `master`, `trunk`, `develop`) when not inside a
+linked `git worktree add` worktree. Work on protected branches must happen in a
+worktree so the main worktree stays clean.
+
+## Worktree Isolation
+
+The `worktree-isolation-enforcer` rule (configured in
+`.config/project-lint/rules/active/worktree-isolation.toml`) enforces that all
+work on protected branches happens inside a linked git worktree. It acts at
+three points:
+
+1. **Pre-commit hook** (`--agent git-hooks`/`all`): blocks commits to a
+   protected branch outside a linked worktree.
+2. **PreToolUse** (Edit/Write/MultiEdit/NotebookEdit/Task): blocks **direct
+   edits** and **subagent dispatch** on a protected branch in the main
+   worktree. This closes the gap where only subagent dispatch was blocked.
+   Write-tool blocking is **scoped by `protected_paths`** (default
+   `["src/**"]`): only writes matching one of the globs are blocked, so
+   edits to `docs/`, config, `README.md`, etc. on main are allowed while
+   source-code edits are not. Subagent dispatch is never scoped by paths —
+   it is always blocked on a protected branch in the main worktree.
+3. **Stop**: blocks stopping with a dirty working tree on a protected branch
+   in the main worktree. This fires on **every** Stop event — there is no
+   once-per-session suppression, so a recovered-but-still-dirty state
+   re-triggers the guard.
+
+All three checks are no-ops inside a linked worktree and on non-protected
+branches. Disable the rule by setting `enabled = false` in
+`worktree-isolation.toml`, or tune which write paths trigger it via the
+`protected_paths` glob list (empty defaults to `["src/**"]`), or add a
+`disabled_if_path_exists` marker.
 
 ## Hook Events
 

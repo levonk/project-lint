@@ -1,0 +1,40 @@
+# Worktree Isolation Enforcement Rule
+# Blocks direct edits, subagent dispatch, and stop-with-dirty-tree on protected
+# branches (main/master/trunk/develop) when running in the MAIN worktree.
+#
+# Work on protected branches is expected to happen inside a linked worktree
+# (created via `git worktree add`). This rule closes three gaps:
+#
+#   1. Pre-commit hook: the installed git pre-commit script blocks commits to
+#      a protected branch outside a linked worktree (see `install-hook --agent
+#      git-hooks` / `all`).
+#   2. PreToolUse: blocks Edit/Write/MultiEdit/NotebookEdit (direct edits) AND
+#      Task/run_subagent (subagent dispatch) on a protected branch in the main
+#      worktree. Previously only subagent dispatch was blocked, so direct edits
+#      sailed through.
+#   3. Stop: blocks stopping with a dirty working tree on a protected branch in
+#      the main worktree. This fires on EVERY Stop event — there is no
+#      once-per-session suppression, so a recovered-but-still-dirty state will
+#      re-trigger the guard.
+#
+# All three checks are no-ops inside a linked worktree and on non-protected
+# branches. Disable this rule by setting `enabled = false` or by adding a
+# `disabled_if_path_exists` marker (e.g. ".no-worktree-isolation").
+name = "worktree-isolation"
+description = "Enforce worktree isolation for protected branches"
+enabled = true
+severity = "error"
+
+[[rules]]
+name = "worktree-isolation-enforcer"
+pattern = "*"
+triggers = ["pre_tool_use", "stop"]
+check_content = false
+severity = "error"
+# Path globs that scope which write-tool events are blocked on a protected
+# branch in the main worktree. Only writes matching one of these globs are
+# blocked; edits to docs/, config, README, etc. are allowed on main.
+# Subagent dispatch is never scoped by paths — it is always blocked.
+# When empty, defaults to ["src/**"].
+protected_paths = ["src/**"]
+message = "Work on protected branches must happen inside a linked git worktree. Run: git worktree add ../<branch>-work -b work/<branch>"

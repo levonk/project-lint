@@ -1,9 +1,10 @@
 use crate::config::{Config, CustomRule, ModularRule, RuleSeverity};
-use crate::hooks::{Decision, HookResult, ProjectLintEvent};
+use crate::hooks::{Decision, EventType, HookResult, ProjectLintEvent};
 use crate::utils::{matches_pattern, path_exists_glob, Result};
 use serde_json;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use tracing::{debug, info, warn};
 
 pub struct RuleEngine<'a> {
@@ -261,6 +262,14 @@ impl<'a> RuleEngine<'a> {
             return self.evaluate_uv_rule(rule, event);
         }
 
+        // Special handling for worktree isolation enforcement.
+        // Blocks writes/subagent dispatch and stop-with-dirty-tree when the
+        // current branch is a protected branch (main/master) AND the cwd is
+        // the main worktree (not a linked `git worktree add` worktree).
+        if rule.name == "worktree-isolation-enforcer" {
+            return self.evaluate_worktree_isolation_rule(rule, event);
+        }
+
         // Check content patterns against user prompt or file content if available
         if rule.check_content {
             let mut content_to_check = String::new();
@@ -440,6 +449,141 @@ impl<'a> RuleEngine<'a> {
         Ok(None)
     }
 
+    /// Evaluate worktree isolation enforcement.
+    ///
+    /// Prevents direct edits, subagent dispatch, and stop-with-dirty-tree on
+    /// protected branches (main/master) when running in the **main worktree**
+    /// (i.e. not inside a linked `git worktree add` worktree). This codifies
+    /// the "all work on main happens in a worktree" practice:
+    ///
+    /// - **PreToolUse** for write/edit tools (`Edit`, `Write`, `MultiEdit`,
+    ///   `NotebookEdit`) and subagent dispatch (`Task`, `run_subagent`):
+    ///   denied on protected branch in main worktree. This closes the gap
+    ///   where only subagent dispatch was blocked — direct edits are now
+    ///   blocked too.
+    /// - **Stop**: denied when the protected branch in the main worktree has
+    ///   a dirty working tree (uncommitted changes). This fires on **every**
+    ///   Stop event — there is no once-per-session suppression, so a
+    ///   recovered-but-still-dirty state will re-trigger the guard.
+    ///
+    /// Both checks are no-ops inside a linked worktree (where work on main is
+    /// expected to happen) and on non-protected branches.
+    fn evaluate_worktree_isolation_rule(
+        &self,
+        rule: &CustomRule,
+        event: &ProjectLintEvent,
+    ) -> Result<Option<DetectedIssue>> {
+        // Only act on PreToolUse and Stop events.
+        if event.event_type != EventType::PreToolUse && event.event_type != EventType::Stop {
+            return Ok(None);
+        }
+
+        let cwd_buf = event
+            .cwd
+            .clone()
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_else(|| PathBuf::from("."));
+        let cwd = cwd_buf.as_path();
+
+        // Only enforce inside a git repo.
+        if !is_inside_git_repo(cwd)? {
+            return Ok(None);
+        }
+
+        // Only enforce on protected branches.
+        let branch = match current_branch(cwd)? {
+            Some(b) => b,
+            None => return Ok(None), // detached HEAD — let git hooks handle it
+        };
+        if !is_protected_branch(&branch) {
+            return Ok(None);
+        }
+
+        // Inside a linked worktree, work on main is allowed.
+        if is_in_linked_worktree(cwd)? {
+            return Ok(None);
+        }
+
+        match event.event_type {
+            EventType::PreToolUse => {
+                let tool = event.context.tool_name.as_deref().unwrap_or("");
+
+                // Subagent dispatch is never scoped by paths — a subagent
+                // inherits the cwd and could touch anything in the tree, so
+                // it is always blocked on a protected branch in the main
+                // worktree.
+                if is_subagent_tool(tool) {
+                    return Ok(Some(DetectedIssue {
+                        name: rule.name.clone(),
+                        message: format!(
+                            "🚫 Worktree isolation: subagent dispatch on protected branch \
+                             '{branch}' is blocked outside a linked worktree.\n\n\
+                             Create a worktree before working on {branch}:\n  \
+                             git worktree add ../{branch}-work -b work/{branch}\n\
+                             Then re-run your command from inside that worktree."
+                        ),
+                        severity: rule.severity.clone(),
+                    }));
+                }
+
+                // Write/edit tools are scoped by `protected_paths`. When the
+                // list is empty, default to `src/**` (protect source code,
+                // allow docs/config edits on a protected branch).
+                if is_write_tool(tool) {
+                    let globs = if rule.protected_paths.is_empty() {
+                        &["src/**".to_string()][..]
+                    } else {
+                        &rule.protected_paths[..]
+                    };
+
+                    let file_path = resolve_write_file_path(event);
+                    let in_scope = match file_path.as_deref() {
+                        Some(p) => path_matches_any_glob(p, globs),
+                        // Can't determine the target path — don't block,
+                        // since we can't confirm it's under a protected path.
+                        None => false,
+                    };
+
+                    if in_scope {
+                        return Ok(Some(DetectedIssue {
+                            name: rule.name.clone(),
+                            message: format!(
+                                "🚫 Worktree isolation: direct edit on protected branch \
+                                 '{branch}' is blocked outside a linked worktree.\n\n\
+                                 Create a worktree before working on {branch}:\n  \
+                                 git worktree add ../{branch}-work -b work/{branch}\n\
+                                 Then re-run your command from inside that worktree."
+                            ),
+                            severity: rule.severity.clone(),
+                        }));
+                    }
+                }
+                Ok(None)
+            }
+            EventType::Stop => {
+                // Block stopping with a dirty protected branch in the main worktree.
+                if is_dirty(cwd)? {
+                    return Ok(Some(DetectedIssue {
+                        name: rule.name.clone(),
+                        message: format!(
+                            "🚫 Worktree isolation: stopping on protected branch '{branch}' \
+                             with uncommitted changes in the main worktree is blocked.\n\n\
+                             Either:\n  \
+                             1. Move your work into a linked worktree:\n     \
+                             git worktree add ../{branch}-work -b work/{branch}\n  \
+                             2. Or commit/stash your changes before stopping.\n\n\
+                             This guard fires on every Stop event — it is not suppressed \
+                             after the first attempt."
+                        ),
+                        severity: rule.severity.clone(),
+                    }));
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
+    }
+
     /// Extract the command string from an event, checking both tool_input
     /// (PreToolUse) and context.command (PreRunCommand / Windsurf).
     fn extract_command_from_event(&self, event: &ProjectLintEvent) -> Option<String> {
@@ -602,6 +746,172 @@ impl<'a> RuleEngine<'a> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Worktree isolation helpers
+// ---------------------------------------------------------------------------
+
+/// Tool names that perform direct file edits. Blocking these on a protected
+/// branch in the main worktree closes the gap where only subagent dispatch
+/// was blocked.
+fn is_write_or_subagent_tool(tool: &str) -> bool {
+    is_write_tool(tool) || is_subagent_tool(tool)
+}
+
+fn is_write_tool(tool: &str) -> bool {
+    matches!(
+        tool,
+        "Edit" | "Write" | "MultiEdit" | "NotebookEdit" | "edit" | "write"
+    )
+}
+
+/// Tool names that dispatch a subagent (which inherits the cwd and would
+/// operate on the main worktree). Covers Claude Code's `Task` tool and the
+/// generic `run_subagent` name used by other agents.
+fn is_subagent_tool(tool: &str) -> bool {
+    matches!(
+        tool,
+        "Task" | "run_subagent" | "RunSubagent" | "subagent" | "launch_subagent"
+    )
+}
+
+/// Branches where direct work is forbidden outside a linked worktree.
+fn is_protected_branch(branch: &str) -> bool {
+    matches!(branch, "main" | "master" | "trunk" | "develop")
+}
+
+/// Resolve the target file path of a write/edit tool event.
+///
+/// The Claude mapper populates `context.file_path` for `Read`/`Edit`/`Write`
+/// but not for `MultiEdit`/`NotebookEdit`, so we also peek at `tool_input`
+/// (`file_path`, `notebook_path`, `path`) as a fallback. Returns the path as
+/// a string (absolute or repo-relative — glob matching handles both).
+fn resolve_write_file_path(event: &ProjectLintEvent) -> Option<String> {
+    if let Some(p) = &event.context.file_path {
+        return Some(p.to_string_lossy().to_string());
+    }
+    if let Some(input) = &event.context.tool_input {
+        for field in ["file_path", "notebook_path", "path"] {
+            if let Some(s) = input.get(field).and_then(|v| v.as_str()) {
+                return Some(s.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// True if `path` matches any of the glob patterns. Falls back to a simple
+/// `matches_pattern` substring/suffix check for non-glob patterns.
+fn path_matches_any_glob(path: &str, globs: &[String]) -> bool {
+    for g in globs {
+        if crate::utils::is_glob(g) {
+            if let Ok(p) = glob::Pattern::new(g) {
+                if p.matches(path) {
+                    return true;
+                }
+            }
+        } else if matches_pattern(path, g) {
+            return true;
+        }
+    }
+    false
+}
+
+/// True if `cwd` is inside a git repository.
+fn is_inside_git_repo(cwd: &Path) -> Result<bool> {
+    Ok(git_run(cwd, &["rev-parse", "--is-inside-work-tree"])?.trim() == "true")
+}
+
+/// The current branch name, or `None` for detached HEAD.
+fn current_branch(cwd: &Path) -> Result<Option<String>> {
+    let out = git_run(cwd, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let s = out.trim();
+    if s.is_empty() || s == "HEAD" {
+        Ok(None)
+    } else {
+        Ok(Some(s.to_string()))
+    }
+}
+
+/// True if `cwd` is a **linked** worktree (created via `git worktree add`),
+/// as opposed to the main worktree.
+///
+/// In the main worktree, `--git-dir` and `--git-common-dir` resolve to the
+/// same path. In a linked worktree, `--git-dir` points at
+/// `<common>/.git/worktrees/<name>` while `--git-common-dir` points at the
+/// shared `<common>/.git`, so they differ.
+fn is_in_linked_worktree(cwd: &Path) -> Result<bool> {
+    let git_dir = git_run(cwd, &["rev-parse", "--git-dir"])?;
+    let common_dir = git_run(cwd, &["rev-parse", "--git-common-dir"])?;
+    let git_dir = normalize_git_path(cwd, git_dir.trim());
+    let common_dir = normalize_git_path(cwd, common_dir.trim());
+    Ok(git_dir != common_dir)
+}
+
+/// True if the working tree has any uncommitted changes (staged or unstaged).
+fn is_dirty(cwd: &Path) -> Result<bool> {
+    let out = git_run(cwd, &["status", "--porcelain"])?;
+    Ok(!out.trim().is_empty())
+}
+
+/// Resolve a possibly-relative git path against `cwd` to an absolute path for
+/// comparison. `git rev-parse --git-dir` returns `.git` in the main worktree
+/// and an absolute path in linked worktrees; `--git-common-dir` may be
+/// relative or absolute depending on git version.
+fn normalize_git_path(cwd: &Path, p: &str) -> PathBuf {
+    let path = PathBuf::from(p);
+    if path.is_absolute() {
+        path.canonicalize().unwrap_or(path)
+    } else {
+        let joined = cwd.join(&path);
+        joined.canonicalize().unwrap_or(joined)
+    }
+}
+
+/// Run a git command in `cwd` and return its stdout. Returns an empty string
+/// on any failure (treated as "not in a repo" / "no branch" by callers).
+///
+/// Scrubs inherited `GIT_*` environment variables (e.g. `GIT_INDEX_FILE`,
+/// `GIT_DIR`) that git hooks set — without this, git commands run from inside
+/// a hook would operate on the hook's repo/index instead of the target cwd,
+/// causing "index file open failed: Not a directory" errors in tests that
+/// create linked worktrees.
+fn git_run(cwd: &Path, args: &[&str]) -> Result<String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .env_clear()
+        .envs(clean_env())
+        .output();
+    match output {
+        Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).to_string()),
+        Ok(o) => {
+            debug!(
+                "git {} failed: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&o.stderr).trim()
+            );
+            Ok(String::new())
+        }
+        Err(e) => {
+            debug!("git {} could not start: {}", args.join(" "), e);
+            Ok(String::new())
+        }
+    }
+}
+
+/// Minimal environment for git subprocesses: PATH so git is found, plus HOME
+/// for config. All `GIT_*` vars are excluded so hook-inherited state doesn't
+/// leak into the subprocess.
+fn clean_env() -> Vec<(String, String)> {
+    let mut env = Vec::new();
+    for key in ["PATH", "HOME", "USER", "TMPDIR", "LANG", "LC_ALL"] {
+        if let Ok(val) = std::env::var(key) {
+            env.push((key.to_string(), val));
+        }
+    }
+    env
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -628,6 +938,7 @@ mod tests {
             disabled_if_path_exists: None,
             enabled_if_path_exists: None,
             exclude_patterns: vec![],
+            protected_paths: vec![],
             triggers: vec!["pre_tool_use".to_string()],
             mode: ExecutionMode::LocalSync,
         });
@@ -743,6 +1054,7 @@ mod tests {
             disabled_if_path_exists: None,
             enabled_if_path_exists: None,
             exclude_patterns: vec![],
+            protected_paths: vec![],
             triggers: vec!["pre_tool_use".to_string(), "pre_run_command".to_string()],
             mode: ExecutionMode::LocalSync,
         });
@@ -1014,6 +1326,7 @@ mod tests {
             disabled_if_path_exists: None,
             enabled_if_path_exists: None,
             exclude_patterns: vec![],
+            protected_paths: vec![],
             triggers: vec!["pre_tool_use".to_string(), "pre_run_command".to_string()],
             mode: ExecutionMode::LocalSync,
         });
@@ -1452,5 +1765,417 @@ dev-dependencies = ["pytest"]
         let result = engine.evaluate_event(&event).unwrap();
         assert!(result.message.is_none());
         assert!(result.modified_input.is_none());
+    }
+
+    // ── worktree isolation enforcement ──
+
+    fn make_worktree_config() -> Config {
+        let mut config = Config::default();
+        config.rules.custom_rules.push(CustomRule {
+            name: "worktree-isolation-enforcer".to_string(),
+            pattern: "*".to_string(),
+            message: "worktree isolation".to_string(),
+            severity: RuleSeverity::Error,
+            check_content: false,
+            content_pattern: None,
+            exception_pattern: None,
+            condition: None,
+            required: false,
+            required_if_path_exists: None,
+            disabled_if_path_exists: None,
+            enabled_if_path_exists: None,
+            exclude_patterns: vec![],
+            protected_paths: vec!["src/**".to_string()],
+            triggers: vec!["pre_tool_use".to_string(), "stop".to_string()],
+            mode: ExecutionMode::LocalSync,
+        });
+        config
+    }
+
+    /// Create a temp git repo with an initial commit on `main` (or the
+    /// default initial branch). Returns the TempDir (keep it alive for the
+    /// test) and the path to use as cwd.
+    fn make_git_repo_on_main() -> tempfile::TempDir {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path();
+        // init with an explicit branch name so the test is deterministic
+        // regardless of the user's global init.defaultBranch setting.
+        // Use -b (supported since git 2.28); --branch is not a valid flag.
+        run_git(path, &["init", "-b", "main"]);
+        run_git(path, &["config", "user.email", "t@t.test"]);
+        run_git(path, &["config", "user.name", "test"]);
+        std::fs::write(path.join("README.md"), "init\n").unwrap();
+        run_git(path, &["add", "README.md"]);
+        run_git(path, &["commit", "-m", "init"]);
+        dir
+    }
+
+    fn run_git(cwd: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .env_clear()
+            .envs(clean_env())
+            .output()
+            .expect("git runs");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    }
+
+    #[test]
+    fn test_worktree_helpers_classification() {
+        assert!(is_write_tool("Edit"));
+        assert!(is_write_tool("Write"));
+        assert!(is_write_tool("MultiEdit"));
+        assert!(is_write_tool("NotebookEdit"));
+        assert!(!is_write_tool("Read"));
+        assert!(is_subagent_tool("Task"));
+        assert!(is_subagent_tool("run_subagent"));
+        assert!(!is_subagent_tool("Edit"));
+        assert!(is_write_or_subagent_tool("Edit"));
+        assert!(is_write_or_subagent_tool("Task"));
+        assert!(!is_write_or_subagent_tool("Read"));
+        assert!(is_protected_branch("main"));
+        assert!(is_protected_branch("master"));
+        assert!(is_protected_branch("develop"));
+        assert!(!is_protected_branch("feature/x"));
+    }
+
+    #[test]
+    fn test_worktree_isolation_blocks_edit_on_main() {
+        let dir = make_git_repo_on_main();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::PreToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Edit".to_string()),
+                tool_input: Some(json!({ "file_path": "src/lib.rs" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(result.decision, Decision::Deny);
+        let msg = result.message.unwrap();
+        assert!(msg.contains("direct edit"), "msg: {msg}");
+        assert!(msg.contains("main"));
+    }
+
+    #[test]
+    fn test_worktree_isolation_allows_docs_write_on_main() {
+        // protected_paths = ["src/**"] → a write to docs/ on main is allowed.
+        let dir = make_git_repo_on_main();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::PreToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Write".to_string()),
+                tool_input: Some(json!({ "file_path": "docs/guide.md" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(
+            result.decision,
+            Decision::Allow,
+            "writes outside src/ on main must be allowed under protected_paths scoping"
+        );
+        assert!(result.message.is_none());
+    }
+
+    #[test]
+    fn test_worktree_isolation_blocks_multiedit_in_src_via_tool_input() {
+        // MultiEdit isn't mapped to context.file_path by the Claude mapper,
+        // so the evaluator must read file_path from tool_input.
+        let dir = make_git_repo_on_main();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::PreToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                tool_name: Some("MultiEdit".to_string()),
+                tool_input: Some(json!({ "file_path": "src/main.rs" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(result.decision, Decision::Deny);
+    }
+
+    #[test]
+    fn test_worktree_isolation_default_src_when_protected_paths_empty() {
+        // Empty protected_paths defaults to ["src/**"].
+        let dir = make_git_repo_on_main();
+        let mut config = make_worktree_config();
+        config.rules.custom_rules[0].protected_paths = vec![];
+        let engine = RuleEngine::new(&config);
+
+        let src_event = ProjectLintEvent {
+            event_type: EventType::PreToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Edit".to_string()),
+                tool_input: Some(json!({ "file_path": "src/lib.rs" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+        let docs_event = ProjectLintEvent {
+            event_type: EventType::PreToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Edit".to_string()),
+                tool_input: Some(json!({ "file_path": "README.md" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        assert_eq!(
+            engine.evaluate_event(&src_event).unwrap().decision,
+            Decision::Deny,
+            "empty protected_paths defaults to src/**"
+        );
+        assert_eq!(
+            engine.evaluate_event(&docs_event).unwrap().decision,
+            Decision::Allow,
+            "empty protected_paths still allows non-src writes"
+        );
+    }
+
+    #[test]
+    fn test_worktree_isolation_blocks_subagent_on_main() {
+        let dir = make_git_repo_on_main();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::PreToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Task".to_string()),
+                tool_input: Some(json!({})),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(result.decision, Decision::Deny);
+        let msg = result.message.unwrap();
+        assert!(msg.contains("subagent dispatch"), "msg: {msg}");
+    }
+
+    #[test]
+    fn test_worktree_isolation_allows_read_on_main() {
+        let dir = make_git_repo_on_main();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::PreToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Read".to_string()),
+                tool_input: Some(json!({ "file_path": "README.md" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(result.decision, Decision::Allow);
+        assert!(result.message.is_none());
+    }
+
+    #[test]
+    fn test_worktree_isolation_allows_edit_on_feature_branch() {
+        let dir = make_git_repo_on_main();
+        let path = dir.path();
+        run_git(path, &["checkout", "-b", "feature/work"]);
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::PreToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(path.to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Edit".to_string()),
+                tool_input: Some(json!({ "file_path": "src/lib.rs" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(result.decision, Decision::Allow);
+        assert!(result.message.is_none());
+    }
+
+    #[test]
+    fn test_worktree_isolation_stop_blocks_dirty_main() {
+        let dir = make_git_repo_on_main();
+        let path = dir.path();
+        // Make the tree dirty.
+        std::fs::write(path.join("dirty.txt"), "uncommitted\n").unwrap();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::Stop,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(path.to_path_buf()),
+            context: EventContext {
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(result.decision, Decision::Deny);
+        let msg = result.message.unwrap();
+        assert!(msg.contains("stopping"), "msg: {msg}");
+        assert!(msg.contains("not suppressed"));
+    }
+
+    #[test]
+    fn test_worktree_isolation_stop_allows_clean_main() {
+        let dir = make_git_repo_on_main();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::Stop,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(result.decision, Decision::Allow);
+        assert!(result.message.is_none());
+    }
+
+    #[test]
+    fn test_worktree_isolation_stop_fires_again_on_second_dirty_stop() {
+        // No once-per-session suppression: a second Stop event on a dirty
+        // main worktree must still be denied.
+        let dir = make_git_repo_on_main();
+        let path = dir.path();
+        std::fs::write(path.join("dirty.txt"), "uncommitted\n").unwrap();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let mk_stop = || ProjectLintEvent {
+            event_type: EventType::Stop,
+            session_id: Some("sess-1".to_string()),
+            timestamp: None,
+            cwd: Some(path.to_path_buf()),
+            context: EventContext {
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let r1 = engine.evaluate_event(&mk_stop()).unwrap();
+        let r2 = engine.evaluate_event(&mk_stop()).unwrap();
+        assert_eq!(r1.decision, Decision::Deny);
+        assert_eq!(r2.decision, Decision::Deny, "Stop guard must not suppress");
+    }
+
+    #[test]
+    fn test_worktree_isolation_allows_edit_in_linked_worktree() {
+        let dir = make_git_repo_on_main();
+        let main_path = dir.path().to_path_buf();
+        // Create the linked worktree as a subdirectory INSIDE the main repo
+        // temp dir. Git supports worktrees inside the main worktree, and this
+        // avoids any race with /tmp sibling dirs or pre-created parents. The
+        // path must not exist yet (git creates it).
+        let work_cwd = main_path.join("linked-wt");
+
+        let add_out = Command::new("git")
+            .args([
+                "worktree",
+                "add",
+                work_cwd.to_str().unwrap(),
+                "-b",
+                "work/main",
+            ])
+            .current_dir(&main_path)
+            .env_clear()
+            .envs(clean_env())
+            .output()
+            .expect("git worktree add runs");
+        assert!(
+            add_out.status.success(),
+            "git worktree add failed: {}",
+            String::from_utf8_lossy(&add_out.stderr)
+        );
+
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        let event = ProjectLintEvent {
+            event_type: EventType::PreToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(work_cwd.clone()),
+            context: EventContext {
+                tool_name: Some("Edit".to_string()),
+                tool_input: Some(json!({ "file_path": "src/lib.rs" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(
+            result.decision,
+            Decision::Allow,
+            "edits in a linked worktree on a protected branch must be allowed"
+        );
+        assert!(result.message.is_none());
+
+        // Cleanup the linked worktree.
+        let _ = Command::new("git")
+            .args(["worktree", "remove", "--force"])
+            .arg(&work_cwd)
+            .current_dir(&main_path)
+            .env_clear()
+            .envs(clean_env())
+            .output();
     }
 }
