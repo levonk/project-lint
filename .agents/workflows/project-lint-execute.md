@@ -199,8 +199,9 @@ see-also:
       and stripped backticks in the posted PR body.
 
    The CI workflow runs `devbox run -- just ci` (`quality_full_impl`)
-   on the PR — confirm it passes before requesting review. Do not
-   auto-merge unless the user explicitly asks.
+   on the PR. Auto-merge the PR once the quality gate (step 6) has
+   passed and CI is green — no need to wait for an explicit merge
+   request. Use squash-merge to keep a linear history.
 
    **When NOT to auto-merge**:
    - The user said "do not auto-merge" or "wait for my review".
