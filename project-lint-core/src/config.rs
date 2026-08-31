@@ -590,6 +590,15 @@ pub struct CustomRule {
     /// `*.config.ts`, `*.test.ts` from a broad `**/*.ts` ban.
     #[serde(default)]
     pub exclude_patterns: Vec<String>,
+    /// Path globs that scope path-aware rules. Used by the
+    /// `worktree-isolation-enforcer` rule: when non-empty, write-tool
+    /// events are only blocked if `file_path` matches one of these globs
+    /// (e.g. `["src/**"]` to protect source code but allow docs/config
+    /// edits on a protected branch). Subagent dispatch is never scoped by
+    /// paths — it is always blocked on a protected branch in the main
+    /// worktree. When empty, the evaluator falls back to `["src/**"]`.
+    #[serde(default)]
+    pub protected_paths: Vec<String>,
     #[serde(default)]
     pub triggers: Vec<String>,
     /// Execution mode for the rule: how matching events are dispatched.
