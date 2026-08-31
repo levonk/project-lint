@@ -20,6 +20,7 @@ Project-lint is a **modular, multi-faceted linting and organization tool** writt
 - **`src/detection.rs`**: Generic regex-based pattern matching and replacement engine.
 - **`src/security.rs`**: Scans for common security pitfalls and hardcoded secrets.
 - **`src/typescript.rs`**: Specialized linter for TypeScript/JavaScript projects.
+- **`project-lint-core/src/scanners/skill_markdown.rs`**: Validates `SKILL.md` files in the skills-src wrapper pattern — body line limit (default 80, configurable via `[scanner_config.skill_markdown]`), `scripts/refresh.sh` presence, and required frontmatter fields (`name`, `description`, `version`). Gated by the `skill_markdown` check name.
 
 ### 3. Lifecycle & Commands
 

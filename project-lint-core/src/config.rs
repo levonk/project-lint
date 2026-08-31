@@ -53,6 +53,34 @@ pub struct ScannerConfig {
     pub submodule_integrity: Option<SubmoduleIntegrityConfig>,
     #[serde(default)]
     pub magic_numbers: Option<MagicNumbersScannerConfig>,
+    #[serde(default)]
+    pub skill_markdown: Option<SkillMarkdownScannerConfig>,
+}
+
+/// `[scanner_config.skill_markdown]` — configuration for the SKILL.md scanner
+/// that validates the skills-src wrapper pattern: body line limit, refresh.sh
+/// presence, and frontmatter validity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillMarkdownScannerConfig {
+    /// Maximum number of body lines (after frontmatter) allowed in a SKILL.md.
+    /// Defaults to 80 when the section is absent.
+    #[serde(default = "default_skill_max_body_lines")]
+    pub max_body_lines: usize,
+
+    /// When true, every SKILL.md must have a sibling `scripts/refresh.sh`.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_refresh_script: bool,
+
+    /// Directory names that are fully exempt from the SKILL.md scan (e.g.
+    /// `references` for bundled reference copies). When empty, only `target/`
+    /// and `.git/` are skipped.
+    #[serde(default)]
+    pub exempt_dirs: Vec<String>,
+}
+
+fn default_skill_max_body_lines() -> usize {
+    crate::scanners::skill_markdown::DEFAULT_MAX_BODY_LINES
 }
 
 /// `[scanner_config.rust_file_naming]` — extra required/forbidden files and
