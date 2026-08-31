@@ -69,9 +69,10 @@ post_write_code = "./hook.sh"
 ```
 
 For Claude Code, also creates/merges `.claude/settings.json` registering the
-hook for `PreToolUse` (matching `Edit|Write|MultiEdit|NotebookEdit|Task`) and
-`Stop`. The merge is non-destructive — existing permissions and hook entries
-are preserved:
+hook for `PreToolUse` (matching `Edit|Write|MultiEdit|NotebookEdit|Task`),
+`PostToolUse` (matching `Edit|Write|MultiEdit|NotebookEdit`), `Stop`, and
+`SubagentStop`. The merge is non-destructive — existing permissions and hook
+entries are preserved:
 ```json
 {
   "hooks": {
@@ -79,7 +80,14 @@ are preserved:
       { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Task",
         "hooks": [ { "type": "command", "command": ".claude/hook.sh" } ] }
     ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [ { "type": "command", "command": ".claude/hook.sh" } ] }
+    ],
     "Stop": [
+      { "hooks": [ { "type": "command", "command": ".claude/hook.sh" } ] }
+    ],
+    "SubagentStop": [
       { "hooks": [ { "type": "command", "command": ".claude/hook.sh" } ] }
     ]
   }
@@ -88,21 +96,25 @@ are preserved:
 
 ### Git Hooks (pre-commit / pre-push)
 `--agent git-hooks` (or `all`) installs `.git/hooks/pre-commit` and `pre-push`.
-The pre-commit hook includes a **worktree isolation gate** that blocks commits
-to protected branches (`main`, `master`, `trunk`, `develop`) when not inside a
-linked `git worktree add` worktree. Work on protected branches must happen in a
-worktree so the main worktree stays clean.
+Both hooks include a **worktree isolation gate** that blocks commits and pushes
+to protected branches (configurable via `protected_branches`, defaults to
+`main`, `master`, `trunk`, `develop`) when not inside a linked
+`git worktree add` worktree. Work on protected branches must happen in a
+worktree so the main worktree stays clean. The protected branch list is baked
+from the project config at install time.
 
 ## Worktree Isolation
 
 The `worktree-isolation-enforcer` rule (configured in
 `.config/project-lint/rules/active/worktree-isolation.toml`) enforces that all
 work on protected branches happens inside a linked git worktree. It acts at
-three points:
+five points:
 
 1. **Pre-commit hook** (`--agent git-hooks`/`all`): blocks commits to a
    protected branch outside a linked worktree.
-2. **PreToolUse** (Edit/Write/MultiEdit/NotebookEdit/Task): blocks **direct
+2. **Pre-push hook** (`--agent git-hooks`/`all`): same worktree gate as
+   pre-commit — push is the last chance to stop a dirty main from escaping.
+3. **PreToolUse** (Edit/Write/MultiEdit/NotebookEdit/Task): blocks **direct
    edits** and **subagent dispatch** on a protected branch in the main
    worktree. This closes the gap where only subagent dispatch was blocked.
    Write-tool blocking is **scoped by `protected_paths`** (default
@@ -110,15 +122,23 @@ three points:
    edits to `docs/`, config, `README.md`, etc. on main are allowed while
    source-code edits are not. Subagent dispatch is never scoped by paths —
    it is always blocked on a protected branch in the main worktree.
-3. **Stop**: blocks stopping with a dirty working tree on a protected branch
-   in the main worktree. This fires on **every** Stop event — there is no
-   once-per-session suppression, so a recovered-but-still-dirty state
-   re-triggers the guard.
+4. **PostToolUse** (Edit/Write/MultiEdit/NotebookEdit): re-runs the
+   `protected_paths` + branch check after a write lands, catching writes
+   that slipped through (e.g. hook bypassed with `--no-verify`, or a tool
+   the matcher missed).
+5. **Stop / SubagentStop**: blocks stopping (or a subagent returning) with
+   a dirty working tree on a protected branch in the main worktree. This
+   fires on **every** Stop/SubagentStop event — there is no once-per-session
+   suppression, so a recovered-but-still-dirty state re-triggers the guard.
+   SubagentStop fires as soon as the subagent returns, not after the whole
+   session.
 
-All three checks are no-ops inside a linked worktree and on non-protected
+All checks are no-ops inside a linked worktree and on non-protected
 branches. Disable the rule by setting `enabled = false` in
 `worktree-isolation.toml`, or tune which write paths trigger it via the
-`protected_paths` glob list (empty defaults to `["src/**"]`), or add a
+`protected_paths` glob list (empty defaults to `["src/**"]`), or configure
+which branches are protected via `protected_branches` (empty defaults to
+`["main", "master", "trunk", "develop"]`), or add a
 `disabled_if_path_exists` marker.
 
 ## Hook Events

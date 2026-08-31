@@ -27,6 +27,7 @@ fn make_config(rule_count: usize) -> Config {
             enabled_if_path_exists: None,
             exclude_patterns: vec![],
             protected_paths: vec![],
+            protected_branches: vec![],
             triggers: vec!["pre_tool_use".to_string()],
             mode: ExecutionMode::LocalSync,
         });

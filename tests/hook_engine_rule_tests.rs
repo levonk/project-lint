@@ -20,6 +20,7 @@ fn ban_ts_rule(disabled_if_path_exists: Option<&str>, exclude_patterns: &[&str])
         enabled_if_path_exists: None,
         exclude_patterns: exclude_patterns.iter().map(|s| s.to_string()).collect(),
         protected_paths: vec![],
+        protected_branches: vec![],
         triggers: vec!["pre_write_code".to_string()],
         mode: ExecutionMode::LocalSync,
     }

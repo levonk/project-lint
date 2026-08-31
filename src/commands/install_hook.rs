@@ -154,8 +154,13 @@ exit $EXIT_CODE
 /// - `PreToolUse` matching `Edit|Write|MultiEdit|NotebookEdit|Task` — blocks
 ///   direct edits and subagent dispatch on protected branches outside a
 ///   linked worktree (worktree isolation), plus pnpm/uv rewrites.
+/// - `PostToolUse` matching `Edit|Write|MultiEdit|NotebookEdit` — re-runs
+///   the protected_paths + branch check after a write, catching writes that
+///   slipped through (e.g. hook bypassed, or a tool the matcher missed).
 /// - `Stop` — blocks stopping with a dirty protected branch in the main
 ///   worktree.
+/// - `SubagentStop` — same dirty-tree guard as Stop, fires when a subagent
+///   returns.
 ///
 /// Merging is non-destructive: existing top-level keys (permissions, env,
 /// etc.) and pre-existing hook entries are preserved. Our entries are added
@@ -167,7 +172,9 @@ fn merge_claude_settings(settings_path: &Path, hook_command: &str, force: bool) 
     // The events + matchers we want registered.
     let desired: Vec<(&str, Option<&str>)> = vec![
         ("PreToolUse", Some("Edit|Write|MultiEdit|NotebookEdit|Task")),
+        ("PostToolUse", Some("Edit|Write|MultiEdit|NotebookEdit")),
         ("Stop", None),
+        ("SubagentStop", None),
     ];
 
     let mut root: Value = if settings_path.exists() {
@@ -579,24 +586,53 @@ exit $EXIT_CODE
     Ok(())
 }
 
-async fn install_git_hooks(args: &InstallHookArgs) -> Result<()> {
-    let git_dir = get_hook_dir(&args.dir, ".git")?;
-    let hooks_dir = git_dir.join("hooks");
-    fs::create_dir_all(&hooks_dir)?;
+/// Resolve the protected-branches list to bake into generated git hook
+/// scripts. Reads the project config from `project_root` and looks for the
+/// `worktree-isolation-enforcer` custom rule's `protected_branches` field.
+/// Falls back to the conventional defaults `main master trunk develop` when
+/// the config or rule is absent, or when the field is empty.
+fn resolve_protected_branches_for_hooks(project_root: &Path) -> String {
+    let defaults = "main master trunk develop";
+    let config_path = project_root
+        .join(".config")
+        .join("project-lint")
+        .join("config.toml");
+    match project_lint_core::config::Config::load_from_file(&config_path) {
+        Ok(config) => {
+            for rule in &config.rules.custom_rules {
+                if rule.name == "worktree-isolation-enforcer" && !rule.protected_branches.is_empty()
+                {
+                    return rule.protected_branches.join(" ");
+                }
+            }
+            // Also check modular rules
+            for modular in &config.modular_rules {
+                if let Some(custom_rules) = &modular.rules {
+                    for rule in custom_rules {
+                        if rule.name == "worktree-isolation-enforcer"
+                            && !rule.protected_branches.is_empty()
+                        {
+                            return rule.protected_branches.join(" ");
+                        }
+                    }
+                }
+            }
+            defaults.to_string()
+        }
+        Err(_) => defaults.to_string(),
+    }
+}
 
-    // Install pre-commit hook
-    let pre_commit_content = format!(
-        r#"#!/bin/bash
-# Pre-commit hook for project-lint
-# Runs project-lint before committing changes
-
-{bin_resolution}
-
-# --- Worktree isolation gate -------------------------------------------
-# Block commits to protected branches (main/master/trunk/develop) when not
+/// Generate the bash worktree-isolation gate snippet for git hooks.
+/// `action` is "commits" or "pushes" — used in the user-facing message.
+/// `protected_branches` is the space-separated list to bake into the script.
+fn worktree_gate_snippet(action: &str, protected_branches: &str) -> String {
+    format!(
+        r#"# --- Worktree isolation gate -------------------------------------------
+# Block {action} to protected branches ({protected_branches}) when not
 # inside a linked git worktree. Work on protected branches must happen in a
 # worktree (git worktree add) so the main worktree stays clean.
-PROTECTED_BRANCHES="main master trunk develop"
+PROTECTED_BRANCHES="{protected_branches}"
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 GIT_DIR_PATH=$(git rev-parse --git-dir 2>/dev/null)
 GIT_COMMON_DIR_PATH=$(git rev-parse --git-common-dir 2>/dev/null)
@@ -621,14 +657,49 @@ is_linked_worktree() {{
 }}
 
 if is_protected && ! is_linked_worktree; then
-  echo "🚫 Worktree isolation: commits to '$CURRENT_BRANCH' are blocked outside a linked worktree."
+  echo "🚫 Worktree isolation: {action} to '$CURRENT_BRANCH' are blocked outside a linked worktree."
   echo ""
   echo "Create a worktree before working on $CURRENT_BRANCH:"
   echo "  git worktree add ../$CURRENT_BRANCH-work -b work/$CURRENT_BRANCH"
-  echo "Then commit from inside that worktree."
+  echo "Then {action_verb} from inside that worktree."
   exit 1
 fi
-# --- End worktree isolation gate ---------------------------------------
+# --- End worktree isolation gate ---------------------------------------"#,
+        action = action,
+        action_verb = if action == "commits" {
+            "commit"
+        } else {
+            "push"
+        },
+        protected_branches = protected_branches,
+    )
+}
+
+async fn install_git_hooks(args: &InstallHookArgs) -> Result<()> {
+    let git_dir = get_hook_dir(&args.dir, ".git")?;
+    let hooks_dir = git_dir.join("hooks");
+    fs::create_dir_all(&hooks_dir)?;
+
+    // Derive the project root from the .git directory parent (the repo root
+    // in a standard layout). This ensures we read the target repo's config,
+    // not the installer's cwd, when baking protected branches into hooks.
+    let project_root = git_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+    // Read protected branches from config (falls back to defaults).
+    let protected_branches = resolve_protected_branches_for_hooks(&project_root);
+
+    // Install pre-commit hook
+    let pre_commit_content = format!(
+        r#"#!/bin/bash
+# Pre-commit hook for project-lint
+# Runs project-lint before committing changes
+
+{bin_resolution}
+
+{worktree_gate}
 
 # Run project-lint on staged files
 echo "Running project-lint pre-commit checks..."
@@ -654,7 +725,8 @@ fi
 echo "✅ project-lint checks passed"
 exit 0
 "#,
-        bin_resolution = shell_bin_resolution_snippet()
+        bin_resolution = shell_bin_resolution_snippet(),
+        worktree_gate = worktree_gate_snippet("commits", &protected_branches),
     );
 
     let pre_commit_path = hooks_dir.join("pre-commit");
@@ -668,6 +740,8 @@ exit 0
 # Runs comprehensive project-lint checks before pushing
 
 {bin_resolution}
+
+{worktree_gate}
 
 # Run full project-lint check
 echo "Running project-lint pre-push checks..."
@@ -684,7 +758,8 @@ fi
 echo "✅ project-lint checks passed"
 exit 0
 "#,
-        bin_resolution = shell_bin_resolution_snippet()
+        bin_resolution = shell_bin_resolution_snippet(),
+        worktree_gate = worktree_gate_snippet("pushes", &protected_branches),
     );
 
     let pre_push_path = hooks_dir.join("pre-push");
@@ -1122,7 +1197,8 @@ mod tests {
 
         run(args).await?;
 
-        // settings.json must be created and register PreToolUse + Stop.
+        // settings.json must be created and register PreToolUse, PostToolUse,
+        // Stop, and SubagentStop.
         let settings_path = hook_dir.join("settings.json");
         assert!(settings_path.exists(), "settings.json must be created");
         let content = fs::read_to_string(&settings_path)?;
@@ -1141,10 +1217,28 @@ mod tests {
             "command must point at hook.sh"
         );
 
+        let post = &parsed["hooks"]["PostToolUse"];
+        assert!(post.is_array(), "PostToolUse hooks must be an array");
+        let post_matcher = post[0]["matcher"].as_str().unwrap_or("");
+        assert!(
+            post_matcher.contains("Edit") && post_matcher.contains("Write"),
+            "PostToolUse matcher must cover Edit and Write, got: {post_matcher}"
+        );
+
         let stop = &parsed["hooks"]["Stop"];
         assert!(stop.is_array(), "Stop hooks must be an array");
         let stop_cmd = stop[0]["hooks"][0]["command"].as_str().unwrap_or("");
         assert!(stop_cmd.contains(".claude/hook.sh"));
+
+        let subagent_stop = &parsed["hooks"]["SubagentStop"];
+        assert!(
+            subagent_stop.is_array(),
+            "SubagentStop hooks must be an array"
+        );
+        let ss_cmd = subagent_stop[0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap_or("");
+        assert!(ss_cmd.contains(".claude/hook.sh"));
 
         Ok(())
     }
@@ -1223,6 +1317,19 @@ mod tests {
         assert!(
             pc_content.contains("Worktree isolation"),
             "pre-commit must contain the worktree isolation gate"
+        );
+
+        // Pre-push hook also has the worktree gate.
+        let pre_push = target.join("hooks").join("pre-push");
+        assert!(pre_push.exists(), "git pre-push must be installed");
+        let pp_content = fs::read_to_string(&pre_push)?;
+        assert!(
+            pp_content.contains("Worktree isolation"),
+            "pre-push must contain the worktree isolation gate"
+        );
+        assert!(
+            pp_content.contains("pushes"),
+            "pre-push gate message must mention pushes"
         );
 
         // Claude hooks installed.

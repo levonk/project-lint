@@ -1173,6 +1173,7 @@ mod tests {
                 "**/*.test.ts".to_string(),
             ],
             protected_paths: vec![],
+            protected_branches: vec![],
             triggers: vec![],
             mode: ExecutionMode::LocalSync,
         }
