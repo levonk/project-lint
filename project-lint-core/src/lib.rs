@@ -11,7 +11,8 @@ pub use config::{
     ExecutionMode, FilesConfig, GitConfig, GitRuleConfig, MagicNumbersScannerConfig, ModularRule,
     PackageManagerEnforcementConfig, RuleConditions, RuleSeverity, RulesConfig,
     RustFileNamingConfig, RustSecurityConfig, ScannerConfig, ScriptRuleConfig,
-    SubmoduleIntegrityConfig, TypescriptMonorepoConfig, VaultSecurityConfig,
+    SkillMarkdownScannerConfig, SubmoduleIntegrityConfig, TypescriptMonorepoConfig,
+    VaultSecurityConfig,
 };
 pub use hooks::{
     Decision, EventContext, EventMapper, EventType, FileEdit, HookResult, ProjectLintEvent,
@@ -31,6 +32,7 @@ pub use scanners::{
     magic_numbers::{MagicNumbersConfig, MagicNumbersScanner},
     rust_conventions::RustConventionsScanner,
     security::{SecurityRuleSet, SecurityScanner},
+    skill_markdown::SkillMarkdownScanner,
     submodule_integrity::SubmoduleIntegrityScanner,
     typescript::{TypeScriptRuleSet, TypeScriptScanner},
     typescript_monorepo::TypeScriptMonorepoScanner,

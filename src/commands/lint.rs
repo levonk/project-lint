@@ -18,9 +18,9 @@ use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
     ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
     dockerfile_lint::DockerfileLintScanner, magic_numbers::MagicNumbersScanner,
-    rust_conventions::RustConventionsScanner, submodule_integrity::SubmoduleIntegrityScanner,
-    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
-    ScannerIssue,
+    rust_conventions::RustConventionsScanner, skill_markdown::SkillMarkdownScanner,
+    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
+    vault_security::VaultSecurityScanner, ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -222,6 +222,19 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => MagicNumbersScanner::new(),
         };
         perform_scanner_issues("MagicNum", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("skill_markdown") {
+        debug!("Performing SKILL.md wrapper-pattern analysis");
+        let scanner = match &config.scanner_config.skill_markdown {
+            Some(c) => SkillMarkdownScanner::with_config(
+                c.max_body_lines,
+                c.require_refresh_script,
+                c.exempt_dirs.clone(),
+            ),
+            None => SkillMarkdownScanner::new(),
+        };
+        perform_scanner_issues("SkillMD", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)
