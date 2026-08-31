@@ -51,6 +51,8 @@ pub struct ScannerConfig {
     pub package_manager_enforcement: Option<PackageManagerEnforcementConfig>,
     #[serde(default)]
     pub submodule_integrity: Option<SubmoduleIntegrityConfig>,
+    #[serde(default)]
+    pub magic_numbers: Option<MagicNumbersScannerConfig>,
 }
 
 /// `[scanner_config.rust_file_naming]` — extra required/forbidden files and
@@ -139,6 +141,40 @@ pub struct SubmoduleIntegrityConfig {
     /// When true, also inspect the staged index in addition to HEAD.
     #[serde(default)]
     pub check_index: bool,
+}
+
+/// `[scanner_config.magic_numbers]` — configuration for the magic-number
+/// scanner that detects hardcoded IPs, ports, and magic numbers that should
+/// be named variables.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MagicNumbersScannerConfig {
+    /// Directory names where variable definitions are expected.
+    /// When empty, uses the scanner's built-in defaults.
+    #[serde(default)]
+    pub definition_dirs: Vec<String>,
+
+    /// Directory names that are fully exempt from scanning.
+    /// When empty, uses the scanner's built-in defaults.
+    #[serde(default)]
+    pub exempt_dirs: Vec<String>,
+
+    /// File extensions to scan (e.g. `[".yml", ".yaml"]`).
+    /// When empty, uses the scanner's built-in defaults.
+    #[serde(default)]
+    pub scan_extensions: Vec<String>,
+
+    /// Filename substrings that mark generated/lock files (always exempt).
+    /// When empty, uses the scanner's built-in defaults.
+    #[serde(default)]
+    pub exempt_name_substrings: Vec<String>,
+
+    /// When true, flag every literal everywhere (even in definition dirs).
+    #[serde(default)]
+    pub strict: bool,
+
+    /// When true, ignore inline `# project-lint: disable=...` overrides.
+    #[serde(default)]
+    pub ignore_overrides: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,0 +1,56 @@
+# Magic-number detection for infrastructure-as-code repos.
+# Detects hardcoded IPs, ports, UIDs, modes, retry counts, and other
+# magic numbers that should be named variables.
+#
+# This slice enables the magic_numbers scanner with sensible defaults
+# for Ansible/Docker-Compose infrastructure repos. The scanner logic
+# lives in project-lint-core/src/scanners/magic_numbers.rs.
+
+[metadata]
+name = "infrastructure-magic-numbers"
+version = "1.0.0"
+scope = "infrastructure"
+updated = "2026-08-30"
+description = "Detect hardcoded IPs, ports, and magic numbers that should be named variables."
+
+[scanner_config.magic_numbers]
+# Directories where variable definitions are expected (key: value is exempt).
+# These are the defaults — override here if your repo uses different names.
+definition_dirs = [
+    "defaults",
+    "vars",
+    "group_vars",
+    "host_vars",
+    "infrastructure",
+]
+
+# Directories fully exempt from scanning (docs, tests, generated content).
+exempt_dirs = [
+    "internal-docs",
+    ".agents",
+    ".claude",
+    ".devin",
+    ".git",
+    ".molecule",
+    "collections",
+    "node_modules",
+    ".venv",
+    ".cache",
+    "08-docs",
+    "docs",
+    "tests",
+    "test",
+    "__pycache__",
+]
+
+# File extensions to scan.
+scan_extensions = [".yml", ".yaml", ".j2", ".jinja2"]
+
+# Filename substrings that mark generated/lock files (always exempt).
+exempt_name_substrings = ["lock", ".vault"]
+
+# When false, inline overrides (# lint-magic-numbers: disable=...) are honored.
+ignore_overrides = false
+
+# When false, variable definitions in definition_dirs are exempt.
+strict = false
