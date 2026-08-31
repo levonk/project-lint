@@ -565,6 +565,22 @@ impl<'a> RuleEngine<'a> {
                     };
 
                     if in_scope {
+                        // PostToolUse fires *after* the write landed on disk.
+                        // Verify the file actually changed via `git status` —
+                        // a no-op write (same content) is not a violation.
+                        // PreToolUse always blocks since it fires *before*
+                        // the write and can't know yet whether it'll change
+                        // anything.
+                        if event.event_type == EventType::PostToolUse {
+                            let changed = match file_path.as_deref() {
+                                Some(p) => is_path_dirty(cwd, p)?,
+                                None => false,
+                            };
+                            if !changed {
+                                return Ok(None);
+                            }
+                        }
+
                         let label = if event.event_type == EventType::PostToolUse {
                             "write detected on"
                         } else {
@@ -889,6 +905,31 @@ fn is_in_linked_worktree(cwd: &Path) -> Result<bool> {
 /// True if the working tree has any uncommitted changes (staged or unstaged).
 fn is_dirty(cwd: &Path) -> Result<bool> {
     let out = git_run(cwd, &["status", "--porcelain"])?;
+    Ok(!out.trim().is_empty())
+}
+
+/// True if `path` (relative to `cwd`) has uncommitted changes — modified,
+/// staged, untracked, or deleted. Used by PostToolUse to verify that a write
+/// actually changed the file on disk, rather than no-op'ing with identical
+/// content.
+///
+/// Returns `false` when `path` cannot be resolved or git reports no change.
+/// This is the safe default: a no-op write to a protected path on a protected
+/// branch in the main worktree is not a violation if the tree is clean.
+fn is_path_dirty(cwd: &Path, path: &str) -> Result<bool> {
+    // Normalize the target path to a repo-relative form. Absolute paths
+    // (common from Claude Code's tool_input) are made relative to cwd so
+    // `git status -- <path>` matches against the worktree.
+    let rel = std::path::Path::new(path);
+    let rel = if rel.is_absolute() {
+        rel.strip_prefix(cwd)
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|_| rel.to_path_buf())
+    } else {
+        rel.to_path_buf()
+    };
+    let rel_str = rel.to_string_lossy();
+    let out = git_run(cwd, &["status", "--porcelain", "--", rel_str.as_ref()])?;
     Ok(!out.trim().is_empty())
 }
 
@@ -2372,10 +2413,17 @@ dev-dependencies = ["pytest"]
 
     #[test]
     fn test_worktree_isolation_post_tool_use_catches_write_on_main() {
-        // PostToolUse should catch a write that slipped through to src/ on main.
+        // PostToolUse should catch a write that slipped through to src/ on
+        // main — but only if the file actually changed on disk. We simulate
+        // the write landing by creating the file before evaluating the event.
         let dir = make_git_repo_on_main();
         let config = make_worktree_config();
         let engine = RuleEngine::new(&config);
+
+        // Simulate the write: create src/lib.rs with new content (the repo
+        // only has README.md committed, so this is a new untracked file).
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src/lib.rs"), "pub fn new() {}\n").unwrap();
 
         let event = ProjectLintEvent {
             event_type: EventType::PostToolUse,
@@ -2394,6 +2442,46 @@ dev-dependencies = ["pytest"]
         assert_eq!(result.decision, Decision::Deny);
         let msg = result.message.unwrap();
         assert!(msg.contains("write detected"), "msg: {msg}");
+    }
+
+    #[test]
+    fn test_worktree_isolation_post_tool_use_allows_noop_write_on_main() {
+        // PostToolUse for a write that did not actually change the file
+        // (same content) must be allowed — `git status` reports clean.
+        let dir = make_git_repo_on_main();
+        let config = make_worktree_config();
+        let engine = RuleEngine::new(&config);
+
+        // Commit a tracked file under src/ so we can "write" the same
+        // content back and verify git sees no change.
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        let content = "pub fn existing() {}\n";
+        std::fs::write(dir.path().join("src/lib.rs"), content).unwrap();
+        run_git(dir.path(), &["add", "src/lib.rs"]);
+        run_git(dir.path(), &["commit", "-m", "add src/lib.rs"]);
+
+        // Simulate a no-op write: same content, file on disk is unchanged.
+        // git status -- src/lib.rs reports nothing.
+        let event = ProjectLintEvent {
+            event_type: EventType::PostToolUse,
+            session_id: None,
+            timestamp: None,
+            cwd: Some(dir.path().to_path_buf()),
+            context: EventContext {
+                tool_name: Some("Write".to_string()),
+                tool_input: Some(json!({ "file_path": "src/lib.rs" })),
+                ide_source: "claude".to_string(),
+                ..Default::default()
+            },
+        };
+
+        let result = engine.evaluate_event(&event).unwrap();
+        assert_eq!(
+            result.decision,
+            Decision::Allow,
+            "a no-op write (same content) must not trigger PostToolUse"
+        );
+        assert!(result.message.is_none());
     }
 
     #[test]
