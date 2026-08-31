@@ -7,6 +7,7 @@ pub mod dev_environment;
 pub mod dockerfile_lint;
 pub mod file_naming;
 pub mod git;
+pub mod magic_numbers;
 pub mod markdown_frontmatter;
 pub mod package_organization;
 pub mod runtime_guards;

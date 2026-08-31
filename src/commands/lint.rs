@@ -17,9 +17,10 @@ use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
     ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
-    dockerfile_lint::DockerfileLintScanner, rust_conventions::RustConventionsScanner,
-    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
-    vault_security::VaultSecurityScanner, ScannerIssue,
+    dockerfile_lint::DockerfileLintScanner, magic_numbers::MagicNumbersScanner,
+    rust_conventions::RustConventionsScanner, submodule_integrity::SubmoduleIntegrityScanner,
+    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
+    ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -193,6 +194,34 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => SubmoduleIntegrityScanner::new(),
         };
         perform_scanner_issues("Submodule", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("magic_numbers") {
+        debug!("Performing magic-number analysis (IPs, ports, magic numbers)");
+        let scanner = match &config.scanner_config.magic_numbers {
+            Some(c) => {
+                let mut cfg =
+                    project_lint_core::scanners::magic_numbers::MagicNumbersConfig::default_for_iac(
+                    );
+                if !c.definition_dirs.is_empty() {
+                    cfg.definition_dirs = c.definition_dirs.clone();
+                }
+                if !c.exempt_dirs.is_empty() {
+                    cfg.exempt_dirs = c.exempt_dirs.clone();
+                }
+                if !c.scan_extensions.is_empty() {
+                    cfg.scan_extensions = c.scan_extensions.clone();
+                }
+                if !c.exempt_name_substrings.is_empty() {
+                    cfg.exempt_name_substrings = c.exempt_name_substrings.clone();
+                }
+                cfg.strict = c.strict;
+                cfg.ignore_overrides = c.ignore_overrides;
+                MagicNumbersScanner::with_config(cfg)
+            }
+            None => MagicNumbersScanner::new(),
+        };
+        perform_scanner_issues("MagicNum", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)

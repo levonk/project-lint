@@ -8,7 +8,7 @@ pub mod utils;
 // Re-export main types for easier access
 pub use config::{
     Config, CustomRule, DevEnvironmentFilesConfig, DirectoriesConfig, DockerfileSecurityConfig,
-    ExecutionMode, FilesConfig, GitConfig, GitRuleConfig, ModularRule,
+    ExecutionMode, FilesConfig, GitConfig, GitRuleConfig, MagicNumbersScannerConfig, ModularRule,
     PackageManagerEnforcementConfig, RuleConditions, RuleSeverity, RulesConfig,
     RustFileNamingConfig, RustSecurityConfig, ScannerConfig, ScriptRuleConfig,
     SubmoduleIntegrityConfig, TypescriptMonorepoConfig, VaultSecurityConfig,
@@ -28,6 +28,7 @@ pub use scanners::{
     dockerfile_lint::DockerfileLintScanner,
     file_naming::{FileNamingScanner, NamingIssue},
     git::{check_branch_allowed, get_git_info, GitInfo},
+    magic_numbers::{MagicNumbersConfig, MagicNumbersScanner},
     rust_conventions::RustConventionsScanner,
     security::{SecurityRuleSet, SecurityScanner},
     submodule_integrity::SubmoduleIntegrityScanner,
