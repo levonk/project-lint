@@ -17,10 +17,11 @@ use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
     ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
-    dockerfile_lint::DockerfileLintScanner, magic_numbers::MagicNumbersScanner,
-    rust_conventions::RustConventionsScanner, skill_markdown::SkillMarkdownScanner,
-    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
-    vault_security::VaultSecurityScanner, ScannerIssue,
+    dockerfile_lint::DockerfileLintScanner, git_sync::GitSyncScanner,
+    magic_numbers::MagicNumbersScanner, rust_conventions::RustConventionsScanner,
+    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
+    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
+    ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -235,6 +236,15 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => SkillMarkdownScanner::new(),
         };
         perform_scanner_issues("SkillMD", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("git_sync") {
+        debug!("Performing git sync analysis (fetch + ahead/behind/dirty-tree)");
+        let scanner = match &config.scanner_config.git_sync {
+            Some(c) => GitSyncScanner::with_config(c.fetch_before_compare, c.main_branches.clone()),
+            None => GitSyncScanner::new(),
+        };
+        perform_scanner_issues("GitSync", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)

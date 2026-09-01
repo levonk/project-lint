@@ -21,6 +21,7 @@ Project-lint is a **modular, multi-faceted linting and organization tool** writt
 - **`src/security.rs`**: Scans for common security pitfalls and hardcoded secrets.
 - **`src/typescript.rs`**: Specialized linter for TypeScript/JavaScript projects.
 - **`project-lint-core/src/scanners/skill_markdown.rs`**: Validates `SKILL.md` files in the skills-src wrapper pattern — body line limit (default 80, configurable via `[scanner_config.skill_markdown]`), `scripts/refresh.sh` presence, and required frontmatter fields (`name`, `description`, `version`). Gated by the `skill_markdown` check name.
+- **`project-lint-core/src/scanners/git_sync.rs`**: Warns when the local repo is out of sync with its remote — runs `git fetch` (toggleable via `[scanner_config.git_sync] fetch_before_compare`), then checks the main branch and the current branch against their upstreams for behind / ahead / diverged states, plus a dirty-working-tree warning. Gated by the `git_sync` check name.
 
 ### 3. Lifecycle & Commands
 

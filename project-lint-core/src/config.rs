@@ -55,6 +55,8 @@ pub struct ScannerConfig {
     pub magic_numbers: Option<MagicNumbersScannerConfig>,
     #[serde(default)]
     pub skill_markdown: Option<SkillMarkdownScannerConfig>,
+    #[serde(default)]
+    pub git_sync: Option<GitSyncScannerConfig>,
 }
 
 /// `[scanner_config.skill_markdown]` — configuration for the SKILL.md scanner
@@ -81,6 +83,24 @@ pub struct SkillMarkdownScannerConfig {
 
 fn default_skill_max_body_lines() -> usize {
     crate::scanners::skill_markdown::DEFAULT_MAX_BODY_LINES
+}
+
+/// `[scanner_config.git_sync]` — configuration for the git sync scanner that
+/// warns when the local repo is behind / ahead of / diverged from its remote
+/// upstream, or when the working tree has uncommitted changes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitSyncScannerConfig {
+    /// When true, run `git fetch` before comparing local and remote refs.
+    /// Defaults to true. Disable for offline or CI environments without
+    /// network access.
+    #[serde(default = "default_true")]
+    pub fetch_before_compare: bool,
+
+    /// Branch names treated as the project's main branch, checked against
+    /// `origin/<name>`. The first name that exists locally is used. Defaults
+    /// to `["main", "master"]` when empty.
+    #[serde(default)]
+    pub main_branches: Vec<String>,
 }
 
 /// `[scanner_config.rust_file_naming]` — extra required/forbidden files and
