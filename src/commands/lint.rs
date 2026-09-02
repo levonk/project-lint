@@ -20,17 +20,18 @@ use project_lint_core::scanners::{
     config_validation::ConfigValidationScanner, dependabot::DependabotScanner,
     dev_environment::DevEnvironmentScanner, devbox_json::DevboxJsonScanner,
     dockerfile_lint::DockerfileLintScanner, envrc_content::EnvrcContentScanner,
-    git_sync::GitSyncScanner, github_workflow::GithubWorkflowScanner,
-    justfile_content::JustfileContentScanner, magic_numbers::MagicNumbersScanner,
-    makefile_content::MakefileContentScanner, markdown_frontmatter::MarkdownFrontmatterScanner,
-    nix_flake::NixFlakeScanner, nix_shell::NixShellScanner,
-    node_modules_integrity::NodeModulesIntegrityScanner, nx_config::NxConfigScanner,
-    nx_project::NxProjectScanner, path_hygiene::PathHygieneScanner,
+    git_sync::GitSyncScanner, github_workflow::GithubWorkflowScanner, go_config::GoConfigScanner,
+    gradle_config::GradleConfigScanner, justfile_content::JustfileContentScanner,
+    magic_numbers::MagicNumbersScanner, makefile_content::MakefileContentScanner,
+    markdown_frontmatter::MarkdownFrontmatterScanner, nix_flake::NixFlakeScanner,
+    nix_shell::NixShellScanner, node_modules_integrity::NodeModulesIntegrityScanner,
+    nx_config::NxConfigScanner, nx_project::NxProjectScanner, path_hygiene::PathHygieneScanner,
     pnpm_workspace::PnpmWorkspaceScanner, process_compose::ProcessComposeScanner,
-    runtime_guards::RuntimeGuardsScanner, rust_conventions::RustConventionsScanner,
-    shell_script::ShellScriptScanner, skill_markdown::SkillMarkdownScanner,
-    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
-    vault_security::VaultSecurityScanner, ScannerIssue,
+    python_config::PythonConfigScanner, runtime_guards::RuntimeGuardsScanner,
+    rust_conventions::RustConventionsScanner, shell_script::ShellScriptScanner,
+    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
+    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
+    ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -127,15 +128,16 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
     if config.is_check_enabled("rust_conventions") {
         debug!("Performing rust conventions analysis");
         let excluded = build_exclusions_from_config(&config);
+        let rs = &config.scanner_config.rust_security;
         perform_scanner_issues(
             "Rust",
-            &RustConventionsScanner::with_exclusions(
-                config
-                    .scanner_config
-                    .rust_security
-                    .as_ref()
+            &RustConventionsScanner::with_config(
+                rs.as_ref()
                     .map(|c| c.forbidden_crates.clone())
                     .unwrap_or_default(),
+                rs.as_ref().map(|c| c.require_edition_2021).unwrap_or(true),
+                rs.as_ref().map(|c| c.require_license).unwrap_or(true),
+                rs.as_ref().map(|c| c.forbid_floating_deps).unwrap_or(true),
                 excluded,
             )
             .scan(project_path)?,
@@ -655,6 +657,53 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             ),
         };
         perform_scanner_issues("PathHyg", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("python_config") {
+        debug!("Performing Python config analysis (pyproject.toml)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.python_config {
+            Some(c) => PythonConfigScanner::with_exclusions(
+                c.required_tools.clone(),
+                c.forbid_setup_py,
+                c.forbid_requirements_txt,
+                excluded,
+            ),
+            None => PythonConfigScanner::with_exclusions(
+                vec!["uv".to_string(), "ruff".to_string()],
+                true,
+                false,
+                excluded,
+            ),
+        };
+        perform_scanner_issues("Python", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("go_config") {
+        debug!("Performing Go config analysis (go.mod / go.sum)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.go_config {
+            Some(c) => {
+                GoConfigScanner::with_exclusions(c.require_go_sum, c.forbid_local_replace, excluded)
+            }
+            None => GoConfigScanner::with_exclusions(true, true, excluded),
+        };
+        perform_scanner_issues("Go", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("gradle_config") {
+        debug!("Performing Gradle config analysis (build.gradle / settings.gradle)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.gradle_config {
+            Some(c) => GradleConfigScanner::with_exclusions(
+                c.forbid_dynamic_versions,
+                c.forbid_snapshots,
+                c.require_wrapper,
+                excluded,
+            ),
+            None => GradleConfigScanner::with_exclusions(true, true, true, excluded),
+        };
+        perform_scanner_issues("Gradle", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)

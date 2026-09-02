@@ -14,6 +14,8 @@ pub mod file_naming;
 pub mod git;
 pub mod git_sync;
 pub mod github_workflow;
+pub mod go_config;
+pub mod gradle_config;
 pub mod justfile_content;
 pub mod magic_numbers;
 pub mod makefile_content;
@@ -27,6 +29,7 @@ pub mod package_organization;
 pub mod path_hygiene;
 pub mod pnpm_workspace;
 pub mod process_compose;
+pub mod python_config;
 pub mod runtime_guards;
 pub mod rust_conventions;
 pub mod security;
@@ -43,7 +46,7 @@ pub mod vault_security;
 /// devbox_json, nix_shell, envrc_content, github_workflow, dependabot,
 /// justfile_content, makefile_content, process_compose, nx_config,
 /// nx_project, pnpm_workspace, node_modules_integrity, shell_script,
-/// agents_md, path_hygiene). Carries enough
+/// agents_md, path_hygiene, python_config, go_config, gradle_config). Carries enough
 /// context for the lint command to format a human-readable line and for tests
 /// to assert on severity/file/message.
 #[derive(Debug, Clone, PartialEq, Eq)]

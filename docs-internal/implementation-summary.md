@@ -574,6 +574,61 @@ hardening checklist.
 
 **Tests**: 25 colocated unit tests (positive, negative, edge case per rule).
 
+## Language Config Scanners (2026-09-02)
+
+**PRD**: [docs-internal/requirements/20260901-language-configs.md](requirements/20260901-language-configs.md)
+
+### Shipped
+
+- **`python_config` scanner** (`project-lint-core/src/scanners/python_config.rs`):
+  Validates `pyproject.toml` for modern Python packaging conventions.
+  - `pyproject-build-system` (error) — `[build-system]` with `requires` and `build-backend`
+  - `pyproject-uses-uv-or-ruff` (warning) — `uv` and `ruff` tool sections present
+  - `pyproject-no-pinned-equals` (warning) — no `==` pinning in `[project.dependencies]`
+  - `pyproject-python-version` (warning) — `requires-python` field present
+  - `pyproject-ruff-config` (info) — `[tool.ruff]` has `line-length` and `target-version`
+  - `pyproject-no-setup-py` (warning) — no `setup.py` alongside `pyproject.toml`
+  - `pyproject-no-requirements-txt` (info) — no `requirements.txt` with `[project.dependencies]`
+  - Configurable via `[scanner_config.python_config]` with `required_tools`, `forbid_setup_py`, `forbid_requirements_txt`
+  - 10 tests
+
+- **`go_config` scanner** (`project-lint-core/src/scanners/go_config.rs`):
+  Validates `go.mod` / `go.sum` for Go module conventions.
+  - `go-mod-go-version` (warning) — Go version 1.22+ specified
+  - `go-mod-no-replace-local` (error) — no local filesystem `replace` directives
+  - `go-mod-no-indirect-in-mod` (info) — no `// indirect` in `go.mod` require block
+  - `go-sum-present` (error) — `go.sum` exists when `go.mod` exists
+  - Configurable via `[scanner_config.go_config]` with `require_go_sum`, `forbid_local_replace`
+  - 9 tests
+
+- **`gradle_config` scanner** (`project-lint-core/src/scanners/gradle_config.rs`):
+  Validates `build.gradle` / `settings.gradle` for Gradle/JVM conventions.
+  - `gradle-no-dynamic-versions` (error) — no `+` dynamic version specifiers
+  - `gradle-no-snapshots` (warning) — no `SNAPSHOT` versions
+  - `gradle-repositories-block` (info) — `repositories` block present
+  - `gradle-settings-plugin-management` (info) — `pluginManagement` in settings.gradle
+  - `gradle-wrapper-present` (warning) — `gradle-wrapper.properties` present
+  - `gradle-no-gradlew-exec` (warning) — `gradlew` has execute permission
+  - Configurable via `[scanner_config.gradle_config]` with `forbid_dynamic_versions`, `forbid_snapshots`, `require_wrapper`
+  - 8 tests
+
+- **`rust_conventions` enhancement** (`project-lint-core/src/scanners/rust_conventions.rs`):
+  Enhanced existing scanner with Cargo.toml content validation.
+  - `cargo-edition-2021` (warning) — `edition = "2021"`
+  - `cargo-description-present` (info) — `description` field present
+  - `cargo-license-present` (warning) — `license` field present
+  - `cargo-repository-present` (info) — `repository` field present
+  - `cargo-no-floating-deps` (warning) — no `*` wildcard versions
+  - `cargo-workspace-root-deps` (info) — workspace root uses `[workspace.dependencies]`
+  - `cargo-no-criterion-bench-in-dev-deps` (warning) — `criterion` in `[dev-dependencies]`
+  - Configurable via `[scanner_config.rust_security]` with `require_edition_2021`, `require_license`, `forbid_floating_deps`
+  - 8 new tests (11 total)
+
+### Tests
+
+- 35 new tests across the 4 scanners (10 python + 9 go + 8 gradle + 8 rust)
+- All 237 workspace tests pass
+
 ---
 
 ## Summary

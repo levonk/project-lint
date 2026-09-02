@@ -99,6 +99,46 @@ pub struct ScannerConfig {
     pub agents_md: Option<AgentsMdScannerConfig>,
     #[serde(default)]
     pub path_hygiene: Option<PathHygieneScannerConfig>,
+    #[serde(default)]
+    pub python_config: Option<PythonConfigScannerConfig>,
+    #[serde(default)]
+    pub go_config: Option<GoConfigScannerConfig>,
+    #[serde(default)]
+    pub gradle_config: Option<GradleConfigScannerConfig>,
+}
+
+/// `[scanner_config.python_config]` — configuration for the Python config
+/// scanner that validates pyproject.toml for modern packaging conventions.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PythonConfigScannerConfig {
+    #[serde(default)]
+    pub required_tools: Vec<String>,
+    #[serde(default = "default_true")]
+    pub forbid_setup_py: bool,
+    #[serde(default)]
+    pub forbid_requirements_txt: bool,
+}
+
+/// `[scanner_config.go_config]` — configuration for the Go config scanner
+/// that validates go.mod and go.sum for Go module conventions.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GoConfigScannerConfig {
+    #[serde(default = "default_true")]
+    pub require_go_sum: bool,
+    #[serde(default = "default_true")]
+    pub forbid_local_replace: bool,
+}
+
+/// `[scanner_config.gradle_config]` — configuration for the Gradle config
+/// scanner that validates build.gradle / settings.gradle for Gradle conventions.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GradleConfigScannerConfig {
+    #[serde(default = "default_true")]
+    pub forbid_dynamic_versions: bool,
+    #[serde(default = "default_true")]
+    pub forbid_snapshots: bool,
+    #[serde(default = "default_true")]
+    pub require_wrapper: bool,
 }
 
 /// `[scanner_config.exclusion]` — configuration for the centralized exclusion
@@ -681,6 +721,12 @@ pub struct RustSecurityConfig {
     pub ban_unsafe_blocks: bool,
     #[serde(default)]
     pub forbidden_crates: Vec<String>,
+    #[serde(default = "default_true")]
+    pub require_edition_2021: bool,
+    #[serde(default = "default_true")]
+    pub require_license: bool,
+    #[serde(default = "default_true")]
+    pub forbid_floating_deps: bool,
 }
 
 /// `[scanner_config.vault_security]` — secrets management backend toggles.
