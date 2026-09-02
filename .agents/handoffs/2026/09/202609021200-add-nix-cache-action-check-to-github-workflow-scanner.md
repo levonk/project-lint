@@ -29,7 +29,7 @@ Before any other action, read `/Users/micro/p/gh/levonk/project-lint/AGENTS.md` 
 
 Add a check to the existing `github_workflow` scanner (or a new dedicated check within it) that validates Nix cache action configuration in `.github/workflows/*.yml` files. The check should:
 
-1. **Detect `magic-nix-cache-action` without `use-flakehub: false`** — if `DeterminateSystems/magic-nix-cache-action` is used and `use-flakehub` is not explicitly set to `false`, AND `flakehub-cache-action` is not also present in the same workflow, flag it as a warning. This is the acryl PR #5 failure mode — the action defaults to `use-flakehub: true` and breaks CI for orgs without FlakeHub.
+1. **Detect `magic-nix-cache-action` with explicit `use-flakehub: true`** — if `DeterminateSystems/magic-nix-cache-action` is used and `use-flakehub: true` is **explicitly set** in the step's `with:` block, AND `flakehub-cache-action` is not also present in the same workflow, flag it as an error. This is the acryl PR #5 failure mode — explicitly opting into FlakeHub auth breaks CI for orgs without FlakeHub. Omitting `use-flakehub` entirely is NOT an error.
 
 2. **Auto-fix: add `magic-nix-cache-action` with `use-flakehub: false` if neither cache action exists** — if a Nix workflow (one that runs `nix build`, `nix flake check`, etc.) has NEITHER `magic-nix-cache-action` NOR `flakehub-cache-action`, the auto-fixer should add `magic-nix-cache-action` with `use-flakehub: false` as a step. This provides the free GitHub Actions cache speedup (30-50% CI time savings) without requiring a FlakeHub account.
 
@@ -40,8 +40,8 @@ The `github_workflow` scanner exists at `project-lint-core/src/scanners/github_w
 ## Key Decisions Made
 
 - **Check name**: `workflow-nix-cache-action` (follows existing naming pattern like `workflow-pinned-actions`, `workflow-timeout`).
-- **Severity**: `warning` for missing cache action (suggestion to add), `error` for `use-flakehub: true` without FlakeHub org (will break CI).
-- **Detection approach**: Parse workflow YAML for `uses:` lines matching `DeterminateSystems/magic-nix-cache-action` or `DeterminateSystems/flakehub-cache-action`. For magic-nix-cache-action, check the step's `with:` block for `use-flakehub: false`. If not found and flakehub-cache-action is not also present in the workflow, flag as error.
+- **Severity**: `warning` for missing cache action (suggestion to add), `error` for explicit `use-flakehub: true` without FlakeHub org (will break CI).
+- **Detection approach**: Parse workflow YAML for `uses:` lines matching `DeterminateSystems/magic-nix-cache-action` or `DeterminateSystems/flakehub-cache-action`. For magic-nix-cache-action, check the step's `with:` block for **explicit** `use-flakehub: true`. If explicitly set to true and flakehub-cache-action is not also present in the workflow, flag as error. Omitting `use-flakehub` is NOT an error.
 - **Auto-fix approach**: If a workflow runs Nix commands (`nix build`, `nix flake`, `nix run`, `nix profile`) and has no cache action, insert a `magic-nix-cache-action` step with `use-flakehub: false` after the nix installer step. This requires identifying the nix-installer step (e.g. `DeterminateSystems/nix-installer-action` or `cachix/install-nix-action`) and inserting after it.
 - **Config**: Add a `require_nix_cache` boolean to `scanner_config.github_workflow` (default `false` to avoid noise on non-Nix repos). When `true`, the scanner flags Nix workflows that lack a cache action.
 
@@ -55,7 +55,7 @@ The `github_workflow` scanner exists at `project-lint-core/src/scanners/github_w
 
 ### The two cache actions
 
-1. **`DeterminateSystems/magic-nix-cache-action`** — free, uses GitHub Actions built-in cache. Defaults to `use-flakehub: true` (FOOTGUN). Set `use-flakehub: false` for orgs without FlakeHub. Cache is scoped to single workflow in single repo.
+1. **`DeterminateSystems/magic-nix-cache-action`** — free, uses GitHub Actions built-in cache. Has a `use-flakehub` input — explicitly setting `use-flakehub: true` without a FlakeHub org breaks CI (FOOTGUN). Omitting `use-flakehub` is safe. Cache is scoped to single workflow in single repo.
 
 2. **`DeterminateSystems/flakehub-cache-action`** — paid ($20/member/month, free for OSS via support@flakehub.com). Uses FlakeHub managed cache. Cache available outside CI. Authenticated via OIDC.
 
@@ -71,7 +71,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@v3
-      - uses: DeterminateSystems/magic-nix-cache-action@<sha>  # defaults to use-flakehub: true!
+      - uses: DeterminateSystems/magic-nix-cache-action@<sha>
+        with:
+          use-flakehub: true   # EXPLICITLY set — breaks CI without FlakeHub org!
       - run: nix build
 ```
 
@@ -80,16 +82,24 @@ If the org is not registered on FlakeHub, the magic-nix-cache-action step fails 
 Unable to authenticate to FlakeHub. Individuals must register at FlakeHub.com; Organizations must create an organization at FlakeHub.com.
 ```
 
-### The fix (two options)
+Note: omitting `use-flakehub` entirely is safe — only explicit `use-flakehub: true` is the error.
 
-**Option A** (free, no FlakeHub account):
+### The fix (three options)
+
+**Option A** (free, no FlakeHub account — just remove the explicit `use-flakehub: true`):
+```yaml
+      - uses: DeterminateSystems/magic-nix-cache-action@<sha>
+        # no use-flakehub set — safe
+```
+
+**Option B** (free, explicitly opt out of FlakeHub):
 ```yaml
       - uses: DeterminateSystems/magic-nix-cache-action@<sha>
         with:
           use-flakehub: false
 ```
 
-**Option B** (paid, with FlakeHub account):
+**Option C** (paid, with FlakeHub account):
 ```yaml
       - uses: DeterminateSystems/flakehub-cache-action@<sha>
 ```
@@ -126,6 +136,7 @@ When `require_nix_cache: true` and a Nix workflow has no cache action:
    - Test: workflow with magic-nix-cache-action and use-flakehub: false → no issues
    - Test: workflow with magic-nix-cache-action and use-flakehub: true, no flakehub-cache-action → error
    - Test: workflow with magic-nix-cache-action and use-flakehub: true, with flakehub-cache-action → no issues
+   - Test: workflow with magic-nix-cache-action and use-flakehub OMITTED → no issues (not an error)
    - Test: Nix workflow with no cache action, require_nix_cache=true → warning
    - Test: Nix workflow with no cache action, require_nix_cache=false → no issues
    - Test: non-Nix workflow with no cache action → no issues
