@@ -820,3 +820,64 @@ target defaults, and base branch.
 - `path_hygiene`: 17 unit tests (clean file, absolute home paths, exempt files,
   AI attribution, AI signature comments, config disable, empty file, non-text
   files, Dockerfile, excluded dirs, custom patterns, helper functions)
+
+## IaC Stack Scanners (2026-09-01)
+
+**PRD**: [docs-internal/requirements/20260901-iac-stack.md](requirements/20260901-iac-stack.md)
+
+### Shipped
+
+Four new Infrastructure-as-Code scanners, all forward-looking (zero or
+near-zero instances of target files today, planned for future use). All
+scanners are silent when no matching files exist — no false positives on
+repos that don't use these file types. All use the centralized exclusion
+list via `walk_project()` / `build_exclusions()`.
+
+- **`terraform_lint`** (`project-lint-core/src/scanners/terraform_lint.rs`):
+  Validates `.tf` / `.tfvars` / `.tf.json` files. Rules: `tf-no-hardcoded-secrets`
+  (error), `tf-variable-description` (info), `tf-variable-type` (warning),
+  `tf-output-description` (info), `tf-provider-version` (warning),
+  `tf-resource-naming` (warning), `tf-no-default-tags-in-resource` (info),
+  `tf-backend-config` (warning, project-level), `tf-lockfile-present` (warning,
+  project-level). Configurable via `[scanner_config.terraform_lint]` with
+  `require_backend`, `require_lockfile`, `forbid_hardcoded_secrets`. Gated by
+  the `terraform_lint` check name.
+
+- **`pulumi_lint`** (`project-lint-core/src/scanners/pulumi_lint.rs`):
+  Validates `Pulumi.yaml` / `Pulumi.*.yaml` files. Rules: `pulumi-name-present`
+  (error), `pulumi-runtime-set` (error), `pulumi-config-present` (info),
+  `pulumi-no-secrets-in-config` (error), `pulumi-description-present` (info).
+  Configurable via `[scanner_config.pulumi_lint]` with `require_config`,
+  `forbid_secrets_in_config`. Gated by the `pulumi_lint` check name.
+
+- **`ansible_lint`** (`project-lint-core/src/scanners/ansible_lint.rs`):
+  Validates Ansible playbooks (in `ansible/`, `playbooks/`, `roles/` dirs) and
+  `ansible.cfg`. Rules: `ansible-no-become-true-at-play` (warning),
+  `ansible-no-hardcoded-vault-password` (error), `ansible-task-name-present`
+  (warning), `ansible-no-command-shell` (info),
+  `ansible-cfg-no-host-key-checking` (error), `ansible-cfg-vault-password-file`
+  (error). Configurable via `[scanner_config.ansible_lint]` with
+  `forbid_host_key_checking`, `require_task_names`. Gated by the `ansible_lint`
+  check name.
+
+- **`jinja_template`** (`project-lint-core/src/scanners/jinja_template.rs`):
+  Validates `.j2` / `.jinja2` templates. Rules: `jinja-no-secret-literals`
+  (warning), `jinja-sandbox-filters` (error, default forbidden: `eval`, `exec`),
+  `jinja-no-absolute-paths` (warning), `jinja-no-raw-include` (info).
+  Configurable via `[scanner_config.jinja_template]` with `forbidden_filters`,
+  `forbid_absolute_paths`. Gated by the `jinja_template` check name.
+
+### Tests
+
+- terraform_lint: 8 tests (silent, hardcoded secret, variable desc/type, clean
+  file, missing lockfile, provider version, missing backend, config disable,
+  empty file)
+- pulumi_lint: 7 tests (silent, missing name/runtime, secret in config, clean,
+  config disable, empty file, Pulumi.dev.yaml variant)
+- ansible_lint: 9 tests (silent, become at play, task missing name, host key
+  checking, vault password file, clean playbook, config disable, empty
+  playbook, ignores non-ansible yml)
+- jinja_template: 8 tests (silent, secret literal, forbidden filter, absolute
+  path, clean template, config disable, empty template, .jinja2 extension)
+
+Total: **32 new unit tests** for the IaC stack scanners.

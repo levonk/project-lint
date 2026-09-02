@@ -16,20 +16,23 @@ use project_lint_core::scanners::git::{check_branch_allowed, get_git_info};
 use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
-    agents_md::AgentsMdScanner, ci_cd_parity::CiCdParityScanner, compose_lint::ComposeLintScanner,
-    config_validation::ConfigValidationScanner, dependabot::DependabotScanner,
-    dev_environment::DevEnvironmentScanner, devbox_json::DevboxJsonScanner,
-    dockerfile_lint::DockerfileLintScanner, envrc_content::EnvrcContentScanner,
-    git_sync::GitSyncScanner, github_workflow::GithubWorkflowScanner, go_config::GoConfigScanner,
-    gradle_config::GradleConfigScanner, justfile_content::JustfileContentScanner,
-    magic_numbers::MagicNumbersScanner, makefile_content::MakefileContentScanner,
-    markdown_frontmatter::MarkdownFrontmatterScanner, nix_flake::NixFlakeScanner,
-    nix_shell::NixShellScanner, node_modules_integrity::NodeModulesIntegrityScanner,
-    nx_config::NxConfigScanner, nx_project::NxProjectScanner, path_hygiene::PathHygieneScanner,
+    agents_md::AgentsMdScanner, ansible_lint::AnsibleLintScanner, ci_cd_parity::CiCdParityScanner,
+    compose_lint::ComposeLintScanner, config_validation::ConfigValidationScanner,
+    dependabot::DependabotScanner, dev_environment::DevEnvironmentScanner,
+    devbox_json::DevboxJsonScanner, dockerfile_lint::DockerfileLintScanner,
+    envrc_content::EnvrcContentScanner, git_sync::GitSyncScanner,
+    github_workflow::GithubWorkflowScanner, go_config::GoConfigScanner,
+    gradle_config::GradleConfigScanner, jinja_template::JinjaTemplateScanner,
+    justfile_content::JustfileContentScanner, magic_numbers::MagicNumbersScanner,
+    makefile_content::MakefileContentScanner, markdown_frontmatter::MarkdownFrontmatterScanner,
+    nix_flake::NixFlakeScanner, nix_shell::NixShellScanner,
+    node_modules_integrity::NodeModulesIntegrityScanner, nx_config::NxConfigScanner,
+    nx_project::NxProjectScanner, path_hygiene::PathHygieneScanner,
     pnpm_workspace::PnpmWorkspaceScanner, process_compose::ProcessComposeScanner,
-    python_config::PythonConfigScanner, runtime_guards::RuntimeGuardsScanner,
-    rust_conventions::RustConventionsScanner, shell_script::ShellScriptScanner,
-    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
+    pulumi_lint::PulumiLintScanner, python_config::PythonConfigScanner,
+    runtime_guards::RuntimeGuardsScanner, rust_conventions::RustConventionsScanner,
+    shell_script::ShellScriptScanner, skill_markdown::SkillMarkdownScanner,
+    submodule_integrity::SubmoduleIntegrityScanner, terraform_lint::TerraformLintScanner,
     typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
     ScannerIssue,
 };
@@ -309,6 +312,67 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => GitSyncScanner::new(),
         };
         perform_scanner_issues("GitSync", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("terraform_lint") {
+        debug!("Performing Terraform lint analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.terraform_lint {
+            Some(c) => TerraformLintScanner::with_exclusions(
+                c.require_backend,
+                c.require_lockfile,
+                c.forbid_hardcoded_secrets,
+                excluded,
+            ),
+            None => TerraformLintScanner::with_exclusions(true, true, true, excluded),
+        };
+        perform_scanner_issues("Terraform", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("pulumi_lint") {
+        debug!("Performing Pulumi lint analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.pulumi_lint {
+            Some(c) => PulumiLintScanner::with_exclusions(
+                c.require_config,
+                c.forbid_secrets_in_config,
+                excluded,
+            ),
+            None => PulumiLintScanner::with_exclusions(true, true, excluded),
+        };
+        perform_scanner_issues("Pulumi", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("ansible_lint") {
+        debug!("Performing Ansible lint analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.ansible_lint {
+            Some(c) => AnsibleLintScanner::with_exclusions(
+                c.forbid_host_key_checking,
+                c.require_task_names,
+                excluded,
+            ),
+            None => AnsibleLintScanner::with_exclusions(true, true, excluded),
+        };
+        perform_scanner_issues("Ansible", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("jinja_template") {
+        debug!("Performing Jinja2 template analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.jinja_template {
+            Some(c) => JinjaTemplateScanner::with_exclusions(
+                c.forbidden_filters.clone(),
+                c.forbid_absolute_paths,
+                excluded,
+            ),
+            None => JinjaTemplateScanner::with_exclusions(
+                vec!["eval".to_string(), "exec".to_string()],
+                true,
+                excluded,
+            ),
+        };
+        perform_scanner_issues("Jinja", &scanner.scan(project_path)?, &mut issues);
     }
 
     if config.is_check_enabled("config_validation") {

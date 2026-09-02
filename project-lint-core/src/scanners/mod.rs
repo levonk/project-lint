@@ -1,4 +1,5 @@
 pub mod agents_md;
+pub mod ansible_lint;
 pub mod ast;
 pub mod ci_cd_parity;
 pub mod compose_lint;
@@ -16,6 +17,7 @@ pub mod git_sync;
 pub mod github_workflow;
 pub mod go_config;
 pub mod gradle_config;
+pub mod jinja_template;
 pub mod justfile_content;
 pub mod magic_numbers;
 pub mod makefile_content;
@@ -29,6 +31,7 @@ pub mod package_organization;
 pub mod path_hygiene;
 pub mod pnpm_workspace;
 pub mod process_compose;
+pub mod pulumi_lint;
 pub mod python_config;
 pub mod runtime_guards;
 pub mod rust_conventions;
@@ -36,6 +39,7 @@ pub mod security;
 pub mod shell_script;
 pub mod skill_markdown;
 pub mod submodule_integrity;
+pub mod terraform_lint;
 pub mod typescript;
 pub mod typescript_monorepo;
 pub mod vault_security;
@@ -46,7 +50,8 @@ pub mod vault_security;
 /// devbox_json, nix_shell, envrc_content, github_workflow, dependabot,
 /// justfile_content, makefile_content, process_compose, nx_config,
 /// nx_project, pnpm_workspace, node_modules_integrity, shell_script,
-/// agents_md, path_hygiene, python_config, go_config, gradle_config). Carries enough
+/// agents_md, path_hygiene, python_config, go_config, gradle_config,
+/// terraform_lint, pulumi_lint, ansible_lint, jinja_template). Carries enough
 /// context for the lint command to format a human-readable line and for tests
 /// to assert on severity/file/message.
 #[derive(Debug, Clone, PartialEq, Eq)]
