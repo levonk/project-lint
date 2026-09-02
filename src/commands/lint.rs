@@ -17,8 +17,9 @@ use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
     ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
-    dockerfile_lint::DockerfileLintScanner, git_sync::GitSyncScanner,
-    magic_numbers::MagicNumbersScanner, rust_conventions::RustConventionsScanner,
+    dockerfile_lint::DockerfileLintScanner, git_sync::GitSyncScanner, go_config::GoConfigScanner,
+    gradle_config::GradleConfigScanner, magic_numbers::MagicNumbersScanner,
+    python_config::PythonConfigScanner, rust_conventions::RustConventionsScanner,
     skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
     typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
     ScannerIssue,
@@ -118,15 +119,16 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
     if config.is_check_enabled("rust_conventions") {
         debug!("Performing rust conventions analysis");
         let excluded = build_exclusions_from_config(&config);
+        let rs = &config.scanner_config.rust_security;
         perform_scanner_issues(
             "Rust",
-            &RustConventionsScanner::with_exclusions(
-                config
-                    .scanner_config
-                    .rust_security
-                    .as_ref()
+            &RustConventionsScanner::with_config(
+                rs.as_ref()
                     .map(|c| c.forbidden_crates.clone())
                     .unwrap_or_default(),
+                rs.as_ref().map(|c| c.require_edition_2021).unwrap_or(true),
+                rs.as_ref().map(|c| c.require_license).unwrap_or(true),
+                rs.as_ref().map(|c| c.forbid_floating_deps).unwrap_or(true),
                 excluded,
             )
             .scan(project_path)?,
@@ -263,6 +265,53 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => GitSyncScanner::new(),
         };
         perform_scanner_issues("GitSync", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("python_config") {
+        debug!("Performing Python config analysis (pyproject.toml)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.python_config {
+            Some(c) => PythonConfigScanner::with_exclusions(
+                c.required_tools.clone(),
+                c.forbid_setup_py,
+                c.forbid_requirements_txt,
+                excluded,
+            ),
+            None => PythonConfigScanner::with_exclusions(
+                vec!["uv".to_string(), "ruff".to_string()],
+                true,
+                false,
+                excluded,
+            ),
+        };
+        perform_scanner_issues("Python", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("go_config") {
+        debug!("Performing Go config analysis (go.mod / go.sum)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.go_config {
+            Some(c) => {
+                GoConfigScanner::with_exclusions(c.require_go_sum, c.forbid_local_replace, excluded)
+            }
+            None => GoConfigScanner::with_exclusions(true, true, excluded),
+        };
+        perform_scanner_issues("Go", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("gradle_config") {
+        debug!("Performing Gradle config analysis (build.gradle / settings.gradle)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.gradle_config {
+            Some(c) => GradleConfigScanner::with_exclusions(
+                c.forbid_dynamic_versions,
+                c.forbid_snapshots,
+                c.require_wrapper,
+                excluded,
+            ),
+            None => GradleConfigScanner::with_exclusions(true, true, true, excluded),
+        };
+        perform_scanner_issues("Gradle", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)
