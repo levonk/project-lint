@@ -28,6 +28,7 @@ pub mod process_compose;
 pub mod runtime_guards;
 pub mod rust_conventions;
 pub mod security;
+pub mod shell_script;
 pub mod skill_markdown;
 pub mod submodule_integrity;
 pub mod typescript;
@@ -39,7 +40,7 @@ pub mod vault_security;
 /// typescript_monorepo, vault_security, skill_markdown, nix_flake,
 /// devbox_json, nix_shell, envrc_content, github_workflow, dependabot,
 /// justfile_content, makefile_content, process_compose, nx_config,
-/// nx_project, pnpm_workspace, node_modules_integrity). Carries enough
+/// nx_project, pnpm_workspace, node_modules_integrity, shell_script). Carries enough
 /// context for the lint command to format a human-readable line and for tests
 /// to assert on severity/file/message.
 #[derive(Debug, Clone, PartialEq, Eq)]
