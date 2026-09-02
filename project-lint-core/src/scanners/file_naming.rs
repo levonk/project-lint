@@ -1,9 +1,8 @@
-use crate::utils::Result;
+use crate::utils::{build_exclusions, walk_project, Result};
 use colored::Colorize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
-use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]
 pub struct NamingIssue {
@@ -22,6 +21,8 @@ pub struct FileNamingScanner {
     /// Extra forbidden filenames (from `[scanner_config.*]` sections). Presence
     /// of any of these at the project root is flagged.
     forbidden_files: Vec<String>,
+    /// Centralized exclusion list (build artifacts, VCS, etc.).
+    excluded: Vec<String>,
 }
 
 impl FileNamingScanner {
@@ -74,6 +75,7 @@ impl FileNamingScanner {
             exact_mismatches,
             expected_names,
             forbidden_files: Vec::new(),
+            excluded: build_exclusions(&[], false),
         }
     }
 
@@ -92,15 +94,21 @@ impl FileNamingScanner {
         scanner
     }
 
+    pub fn with_exclusions(
+        required_files: Vec<String>,
+        forbidden_files: Vec<String>,
+        excluded: Vec<String>,
+    ) -> Self {
+        let mut scanner = Self::with_extra_files(required_files, forbidden_files);
+        scanner.excluded = excluded;
+        scanner
+    }
+
     pub fn scan(&self, project_path: &str) -> Result<Vec<NamingIssue>> {
         let mut issues = Vec::new();
         let project_root = Path::new(project_path);
 
-        for entry in WalkDir::new(project_root)
-            .max_depth(3) // Mostly focus on root and near-root files
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        for entry in walk_project(project_root, &self.excluded, 3) {
             let path = entry.path();
             let file_name = path
                 .file_name()

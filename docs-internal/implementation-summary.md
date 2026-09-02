@@ -121,6 +121,48 @@ This document summarizes the complete implementation of all recommended rules fo
 
 ---
 
+### 6. Centralized Exclusion List (`project-lint-core/src/utils.rs`)
+
+**Purpose**: Shared utility that all WalkDir-based scanners use to skip build
+artifacts, dependency directories, and VCS internals. Prevents false positives
+from scanning `node_modules/`, `target/`, `dist/`, etc. Prerequisite for all
+content-validation scanners.
+
+**Key Functions**:
+- `DEFAULT_EXCLUDED_DIRS` — const list of 12 always-excluded directories
+- `build_exclusions(extra, allow_vendor)` — assembles the full exclusion list
+  from defaults + user extras + vendor toggle
+- `is_excluded_rel(rel, excluded)` — drop-in replacement for inline
+  `rel_str.starts_with("target/")` checks (post-hoc filtering)
+- `is_excluded_entry(entry, root, excluded)` — for `WalkDir::filter_entry`
+  pruning (efficient — children of excluded dirs are never visited)
+- `walk_project(root, excluded, max_depth)` — pre-filtered WalkDir iterator
+
+**Validations**:
+- ✅ Excludes `node_modules/`, `target/`, `dist/`, `build/`, `.next/`,
+  `.turbo/`, `.nuxt/`, `.svelte-kit/`, `.git/`, `.devbox/gen/`, `.cache/`,
+  `coverage/`
+- ✅ Configurable `vendor/` exclusion (off by default, on when
+  `allow_vendor = false`)
+- ✅ User-provided `extra_excludes` appended to defaults (deduplicated)
+- ✅ Multi-segment exclusions (`.devbox/gen`) handled correctly
+- ✅ Configurable via `[scanner_config.exclusion]` TOML table
+
+**Migrated Scanners** (all now use the shared utility):
+- `rust_conventions.rs` — was inline `target/` + `.git/` check
+- `dockerfile_lint.rs` — had no filtering at all
+- `skill_markdown.rs` — was inline `target/` + `.git/` check
+- `magic_numbers.rs` — had own exempt_dirs list (kept for scanner-specific
+  dirs, layered on top of centralized list)
+- `vault_security.rs` — was inline `target/` + `.git/` + `node_modules/` check
+- `file_naming.rs` — had no filtering at all
+- `submodule_integrity.rs` — N/A (uses git2 tree walking, not WalkDir)
+
+**Tests**: 15 unit tests covering default list contents, vendor toggle,
+extra excludes, deduplication, multi-segment matching, and WalkDir pruning
+
+---
+
 ## Module Registration
 
 All modules registered in:

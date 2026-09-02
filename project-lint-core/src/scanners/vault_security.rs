@@ -4,13 +4,13 @@
 //! a project-level policy check.
 
 use crate::scanners::ScannerIssue;
-use crate::utils::Result;
+use crate::utils::{build_exclusions, is_excluded_rel, walk_project, Result};
 use std::path::Path;
-use walkdir::WalkDir;
 
 pub struct VaultSecurityScanner {
     required_env_prefix: Option<String>,
     allowed_backends: Vec<String>,
+    excluded: Vec<String>,
 }
 
 impl VaultSecurityScanner {
@@ -18,6 +18,7 @@ impl VaultSecurityScanner {
         Self {
             required_env_prefix: None,
             allowed_backends: Vec::new(),
+            excluded: build_exclusions(&[], false),
         }
     }
 
@@ -25,6 +26,19 @@ impl VaultSecurityScanner {
         Self {
             required_env_prefix,
             allowed_backends,
+            excluded: build_exclusions(&[], false),
+        }
+    }
+
+    pub fn with_exclusions(
+        required_env_prefix: Option<String>,
+        allowed_backends: Vec<String>,
+        excluded: Vec<String>,
+    ) -> Self {
+        Self {
+            required_env_prefix,
+            allowed_backends,
+            excluded,
         }
     }
 
@@ -34,18 +48,10 @@ impl VaultSecurityScanner {
         let root = Path::new(project_path);
         let mut issues = Vec::new();
 
-        for entry in WalkDir::new(root)
-            .max_depth(4)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-        {
+        for entry in walk_project(root, &self.excluded, 4).filter(|e| e.file_type().is_file()) {
             let path = entry.path();
             let rel = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
-            if rel.starts_with("target/")
-                || rel.starts_with(".git/")
-                || rel.starts_with("node_modules/")
-            {
+            if is_excluded_rel(&rel, &self.excluded) {
                 continue;
             }
             let name = path.file_name().unwrap_or_default().to_string_lossy();

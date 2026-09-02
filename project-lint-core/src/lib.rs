@@ -8,7 +8,7 @@ pub mod utils;
 // Re-export main types for easier access
 pub use config::{
     Config, CustomRule, DevEnvironmentFilesConfig, DirectoriesConfig, DockerfileSecurityConfig,
-    ExecutionMode, FilesConfig, GitConfig, GitRuleConfig, GitSyncScannerConfig,
+    ExclusionConfig, ExecutionMode, FilesConfig, GitConfig, GitRuleConfig, GitSyncScannerConfig,
     MagicNumbersScannerConfig, ModularRule, PackageManagerEnforcementConfig, RuleConditions,
     RuleSeverity, RulesConfig, RustFileNamingConfig, RustSecurityConfig, ScannerConfig,
     ScriptRuleConfig, SkillMarkdownScannerConfig, SubmoduleIntegrityConfig,

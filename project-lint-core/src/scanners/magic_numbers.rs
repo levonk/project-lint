@@ -37,10 +37,9 @@
 //! Use `disable=all` or bare `disable` to suppress all rules on the line.
 
 use crate::scanners::ScannerIssue;
-use crate::utils::Result;
+use crate::utils::{build_exclusions, is_excluded_rel, walk_project, Result};
 use regex::Regex;
 use std::path::Path;
-use walkdir::WalkDir;
 
 /// Configuration for the magic-number scanner.
 #[derive(Debug, Clone, Default)]
@@ -435,6 +434,7 @@ pub struct MagicNumbersScanner {
     config: MagicNumbersConfig,
     numeric: NumericPatterns,
     syntax: SyntaxPatterns,
+    excluded: Vec<String>,
 }
 
 impl MagicNumbersScanner {
@@ -449,6 +449,18 @@ impl MagicNumbersScanner {
             config,
             numeric: NumericPatterns::new(),
             syntax: SyntaxPatterns::new(),
+            excluded: build_exclusions(&[], false),
+        }
+    }
+
+    /// Create a scanner with custom configuration and a centralized exclusion
+    /// list (from `[scanner_config.exclusion]`).
+    pub fn with_config_and_exclusions(config: MagicNumbersConfig, excluded: Vec<String>) -> Self {
+        Self {
+            config,
+            numeric: NumericPatterns::new(),
+            syntax: SyntaxPatterns::new(),
+            excluded,
         }
     }
 
@@ -457,10 +469,8 @@ impl MagicNumbersScanner {
         let root = Path::new(project_path);
         let mut issues = Vec::new();
 
-        for entry in WalkDir::new(root)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
+        for entry in
+            walk_project(root, &self.excluded, usize::MAX).filter(|e| e.file_type().is_file())
         {
             let path = entry.path();
             let rel = path
@@ -468,6 +478,10 @@ impl MagicNumbersScanner {
                 .unwrap_or(path)
                 .to_string_lossy()
                 .to_string();
+
+            if is_excluded_rel(&rel, &self.excluded) {
+                continue;
+            }
 
             if self.is_exempt(&rel) {
                 continue;

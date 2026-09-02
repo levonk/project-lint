@@ -1,6 +1,6 @@
 use colored::Colorize;
 use glob::Pattern;
-use project_lint_core::utils::{matches_pattern, path_exists_glob, Result};
+use project_lint_core::utils::{build_exclusions, matches_pattern, path_exists_glob, Result};
 use std::path::Path;
 use tracing::{debug, info, warn};
 use walkdir::WalkDir;
@@ -74,7 +74,8 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
     // Perform file naming analysis
     if config.is_check_enabled("file_naming") {
         debug!("Performing file naming analysis");
-        perform_file_naming_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
+        let excluded = build_exclusions_from_config(&config);
+        perform_file_naming_analysis(project_path, &mut issues, apply_fixes, dry_run, excluded)?;
     }
 
     // Initialize AST analyzer
@@ -116,15 +117,17 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
     // check name so profiles/custom rules can disable them individually.
     if config.is_check_enabled("rust_conventions") {
         debug!("Performing rust conventions analysis");
+        let excluded = build_exclusions_from_config(&config);
         perform_scanner_issues(
             "Rust",
-            &RustConventionsScanner::with_forbidden_crates(
+            &RustConventionsScanner::with_exclusions(
                 config
                     .scanner_config
                     .rust_security
                     .as_ref()
                     .map(|c| c.forbidden_crates.clone())
                     .unwrap_or_default(),
+                excluded,
             )
             .scan(project_path)?,
             &mut issues,
@@ -154,13 +157,15 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
 
     if config.is_check_enabled("dockerfile_lint") {
         debug!("Performing Dockerfile lint analysis");
+        let excluded = build_exclusions_from_config(&config);
         let scanner = match &config.scanner_config.dockerfile_security {
-            Some(c) => DockerfileLintScanner::with_config(
+            Some(c) => DockerfileLintScanner::with_exclusions(
                 c.require_pinned_digests,
                 c.require_non_root_user,
                 c.forbid_copy_dot,
+                excluded,
             ),
-            None => DockerfileLintScanner::new(),
+            None => DockerfileLintScanner::with_exclusions(true, true, true, excluded),
         };
         perform_scanner_issues("Docker", &scanner.scan(project_path)?, &mut issues);
     }
@@ -178,12 +183,14 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
 
     if config.is_check_enabled("vault_security") {
         debug!("Performing vault security analysis");
+        let excluded = build_exclusions_from_config(&config);
         let scanner = match &config.scanner_config.vault_security {
-            Some(c) => VaultSecurityScanner::with_config(
+            Some(c) => VaultSecurityScanner::with_exclusions(
                 c.required_env_prefix.clone(),
                 c.allowed_backends.clone(),
+                excluded,
             ),
-            None => VaultSecurityScanner::new(),
+            None => VaultSecurityScanner::with_exclusions(None, Vec::new(), excluded),
         };
         perform_scanner_issues("Vault", &scanner.scan(project_path)?, &mut issues);
     }
@@ -199,6 +206,7 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
 
     if config.is_check_enabled("magic_numbers") {
         debug!("Performing magic-number analysis (IPs, ports, magic numbers)");
+        let excluded = build_exclusions_from_config(&config);
         let scanner = match &config.scanner_config.magic_numbers {
             Some(c) => {
                 let mut cfg =
@@ -218,22 +226,32 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
                 }
                 cfg.strict = c.strict;
                 cfg.ignore_overrides = c.ignore_overrides;
-                MagicNumbersScanner::with_config(cfg)
+                MagicNumbersScanner::with_config_and_exclusions(cfg, excluded)
             }
-            None => MagicNumbersScanner::new(),
+            None => MagicNumbersScanner::with_config_and_exclusions(
+                project_lint_core::scanners::magic_numbers::MagicNumbersConfig::default_for_iac(),
+                excluded,
+            ),
         };
         perform_scanner_issues("MagicNum", &scanner.scan(project_path)?, &mut issues);
     }
 
     if config.is_check_enabled("skill_markdown") {
         debug!("Performing SKILL.md wrapper-pattern analysis");
+        let excluded = build_exclusions_from_config(&config);
         let scanner = match &config.scanner_config.skill_markdown {
-            Some(c) => SkillMarkdownScanner::with_config(
+            Some(c) => SkillMarkdownScanner::with_exclusions(
                 c.max_body_lines,
                 c.require_refresh_script,
                 c.exempt_dirs.clone(),
+                excluded,
             ),
-            None => SkillMarkdownScanner::new(),
+            None => SkillMarkdownScanner::with_exclusions(
+                project_lint_core::scanners::skill_markdown::DEFAULT_MAX_BODY_LINES,
+                true,
+                Vec::new(),
+                excluded,
+            ),
         };
         perform_scanner_issues("SkillMD", &scanner.scan(project_path)?, &mut issues);
     }
@@ -295,8 +313,9 @@ fn perform_file_naming_analysis(
     issues: &mut Vec<String>,
     apply_fixes: bool,
     dry_run: bool,
+    excluded: Vec<String>,
 ) -> Result<()> {
-    let scanner = FileNamingScanner::new();
+    let scanner = FileNamingScanner::with_exclusions(Vec::new(), Vec::new(), excluded);
 
     match scanner.scan(project_path) {
         Ok(detected_issues) => {
@@ -340,6 +359,15 @@ fn perform_file_naming_analysis(
     }
 
     Ok(())
+}
+
+/// Build the centralized exclusion list from the `[scanner_config.exclusion]`
+/// section, falling back to defaults when the section is absent.
+fn build_exclusions_from_config(config: &Config) -> Vec<String> {
+    match &config.scanner_config.exclusion {
+        Some(c) => build_exclusions(&c.extra_excludes, c.allow_vendor),
+        None => build_exclusions(&[], false),
+    }
 }
 
 /// Format and append a batch of [`ScannerIssue`]s to the user-facing issue list.
