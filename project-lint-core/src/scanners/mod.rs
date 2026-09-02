@@ -5,12 +5,16 @@ pub mod config_validation;
 pub mod dependency_version_checker;
 pub mod detection;
 pub mod dev_environment;
+pub mod devbox_json;
 pub mod dockerfile_lint;
+pub mod envrc_content;
 pub mod file_naming;
 pub mod git;
 pub mod git_sync;
 pub mod magic_numbers;
 pub mod markdown_frontmatter;
+pub mod nix_flake;
+pub mod nix_shell;
 pub mod package_organization;
 pub mod runtime_guards;
 pub mod rust_conventions;
@@ -23,9 +27,10 @@ pub mod vault_security;
 
 /// Generic issue emitted by the project-level scanners (rust_conventions,
 /// dev_environment, ci_cd_parity, dockerfile_lint, compose_lint,
-/// typescript_monorepo, vault_security, skill_markdown). Carries enough
-/// context for the lint command to format a human-readable line and for
-/// tests to assert on severity/file/message.
+/// typescript_monorepo, vault_security, skill_markdown, nix_flake,
+/// devbox_json, nix_shell, envrc_content). Carries enough context for the
+/// lint command to format a human-readable line and for tests to assert on
+/// severity/file/message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScannerIssue {
     pub file: String,
