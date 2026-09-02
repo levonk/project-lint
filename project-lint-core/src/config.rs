@@ -46,6 +46,8 @@ pub struct ScannerConfig {
     #[serde(default)]
     pub dockerfile_security: Option<DockerfileSecurityConfig>,
     #[serde(default)]
+    pub compose_lint: Option<ComposeLintConfig>,
+    #[serde(default)]
     pub typescript_monorepo: Option<TypescriptMonorepoConfig>,
     #[serde(default)]
     pub package_manager_enforcement: Option<PackageManagerEnforcementConfig>,
@@ -251,7 +253,7 @@ pub struct VaultSecurityConfig {
 }
 
 /// `[scanner_config.dockerfile_security]` — Dockerfile lint toggles.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DockerfileSecurityConfig {
     #[serde(default = "default_true")]
     pub require_pinned_digests: bool,
@@ -259,6 +261,46 @@ pub struct DockerfileSecurityConfig {
     pub require_non_root_user: bool,
     #[serde(default = "default_true")]
     pub forbid_copy_dot: bool,
+    #[serde(default = "default_true")]
+    pub require_healthcheck: bool,
+    #[serde(default = "default_true")]
+    pub require_apk_no_cache: bool,
+    #[serde(default = "default_true")]
+    pub require_apt_no_install_recommends: bool,
+    #[serde(default = "default_true")]
+    pub require_dockerignore: bool,
+    #[serde(default = "default_dockerfile_exempt_digest")]
+    pub exempt_from_digest_pinning: Vec<String>,
+}
+
+fn default_dockerfile_exempt_digest() -> Vec<String> {
+    vec!["scratch".to_string(), "cgr.dev/chainguard".to_string()]
+}
+
+/// `[scanner_config.compose_lint]` — Compose file lint toggles for
+/// `docker-compose*.yml` / `compose*.yml` files.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComposeLintConfig {
+    #[serde(default = "default_true")]
+    pub require_pinned_digests: bool,
+    #[serde(default = "default_true")]
+    pub require_healthcheck: bool,
+    #[serde(default)]
+    pub require_resource_limits: bool,
+    #[serde(default = "default_true")]
+    pub require_no_new_privileges: bool,
+    #[serde(default = "default_true")]
+    pub forbid_privileged: bool,
+    #[serde(default = "default_true")]
+    pub forbid_docker_sock: bool,
+    #[serde(default)]
+    pub ops_mode: bool,
+    #[serde(default = "default_compose_exempt_proxy_labels")]
+    pub exempt_proxy_labels: Vec<String>,
+}
+
+fn default_compose_exempt_proxy_labels() -> Vec<String> {
+    vec!["com.dockerproxy.role".to_string()]
 }
 
 /// `[scanner_config.typescript_monorepo]` — TS monorepo catalog mode, path

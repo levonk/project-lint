@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod ci_cd_parity;
+pub mod compose_lint;
 pub mod config_validation;
 pub mod dependency_version_checker;
 pub mod detection;
@@ -21,10 +22,10 @@ pub mod typescript_monorepo;
 pub mod vault_security;
 
 /// Generic issue emitted by the project-level scanners (rust_conventions,
-/// dev_environment, ci_cd_parity, dockerfile_lint, typescript_monorepo,
-/// vault_security, skill_markdown). Carries enough context for the lint command
-/// to format a human-readable line and for tests to assert on
-/// severity/file/message.
+/// dev_environment, ci_cd_parity, dockerfile_lint, compose_lint,
+/// typescript_monorepo, vault_security, skill_markdown). Carries enough
+/// context for the lint command to format a human-readable line and for
+/// tests to assert on severity/file/message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScannerIssue {
     pub file: String,
