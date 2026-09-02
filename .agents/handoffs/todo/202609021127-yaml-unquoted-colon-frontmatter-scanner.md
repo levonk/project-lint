@@ -224,3 +224,26 @@ The pre-commit hook runs `scripts/run-quality-checks.sh` which currently runs:
 2. `cargo clippy --workspace --all-targets`
 
 Adding a frontmatter check here is straightforward — a bash loop over `git diff --cached --name-only -- '*.md'` files, checking each file's frontmatter for unquoted colon-space sequences.
+
+### Complementary Improvement: SHA Resolution at Generation Time (skills-src)
+
+This scanner catches unquoted-colon bugs at **validation time**. A complementary improvement on the skills-src side would prevent the bug class at **generation time** — but this is a skills-src task, not a project-lint task. Noted here for context so the next session knows the full picture.
+
+**Problem**: Skills that generate GitHub Actions workflows (e.g., `project-adopter`, `container-image-build`) currently hardcode action SHAs in their templates. These go stale when actions publish new releases.
+
+**Solution**: A PEP 723 script (`scripts/resolve-action-shas.py`) in workflow-generating skills that calls `GET https://api.github.com/repos/{owner}/{repo}/git/ref/tags/{tag}` at generation time to resolve action tags to commit SHAs. The skill passes the results into the template context so the generated workflow emits `uses: actions/checkout@<sha> # v5` (SHA-pinned for immutability, major version in comment for Dependabot tracking).
+
+**Architecture decision — no project-lint dependency**: Skills do NOT depend on project-lint. Generation (skill's Python script calling the GitHub API) and validation (project-lint's Rust scanners) are separate concerns in a pipeline:
+
+```
+skill generates workflow → resolve-action-shas.py (GitHub API) → correct YAML
+                                                                          ↓
+project-lint validates → catches anything the generation missed
+```
+
+Making skills depend on project-lint (via submodule or otherwise) would pull a large Rust codebase into skills that only need a simple HTTP call, create a build dependency, and couple generation to validation. The GitHub API is the source of truth — both sides can hit it independently. Dependabot maintains SHAs after generation (detects new tag SHAs, opens PRs to bump). No shared data file, no submodule, no dynamic dependency.
+
+**Trade-offs of the script approach**:
+- Network dependency at generation time (fallback: error out or use cached SHA from previous run)
+- Unauthenticated GitHub API rate limit is 60 req/hr (fine for a handful of actions; `GITHUB_TOKEN` env var bumps to 5000/hr if present)
+- After generation, Dependabot still maintains the SHAs — the script handles initial generation, Dependabot handles drift. Complementary, not redundant.
