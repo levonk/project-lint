@@ -1,6 +1,7 @@
 pub mod agents_md;
 pub mod ansible_lint;
 pub mod ast;
+pub mod binary_validation;
 pub mod ci_cd_parity;
 pub mod compose_lint;
 pub mod config_validation;
@@ -55,7 +56,7 @@ pub mod vault_security;
 /// nx_project, pnpm_workspace, node_modules_integrity, shell_script,
 /// agents_md, path_hygiene, python_config, go_config, gradle_config,
 /// terraform_lint, pulumi_lint, ansible_lint, jinja_template,
-/// sql_migration, protobuf_lint, prisma_schema). Carries enough
+/// sql_migration, protobuf_lint, prisma_schema, binary_validation). Carries enough
 /// context for the lint command to format a human-readable line and for tests
 /// to assert on severity/file/message.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -16,7 +16,8 @@ use project_lint_core::scanners::git::{check_branch_allowed, get_git_info};
 use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
-    agents_md::AgentsMdScanner, ansible_lint::AnsibleLintScanner, ci_cd_parity::CiCdParityScanner,
+    agents_md::AgentsMdScanner, ansible_lint::AnsibleLintScanner,
+    binary_validation::BinaryValidationScanner, ci_cd_parity::CiCdParityScanner,
     compose_lint::ComposeLintScanner, config_validation::ConfigValidationScanner,
     dependabot::DependabotScanner, dev_environment::DevEnvironmentScanner,
     devbox_json::DevboxJsonScanner, dockerfile_lint::DockerfileLintScanner,
@@ -313,6 +314,40 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => GitSyncScanner::new(),
         };
         perform_scanner_issues("GitSync", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("binary_validation") {
+        debug!("Performing binary validation analysis (LFS, oversized, source-dir, duplicates, archives)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.binary_validation {
+            Some(c) => BinaryValidationScanner::with_exclusions(
+                c.lfs_threshold_bytes,
+                c.max_size_bytes,
+                c.check_lfs,
+                c.check_oversized,
+                c.check_source_dir,
+                c.check_duplicate,
+                c.check_archive,
+                c.check_compiled,
+                c.extra_binary_extensions.clone(),
+                c.extra_source_dirs.clone(),
+                excluded,
+            ),
+            None => BinaryValidationScanner::with_exclusions(
+                project_lint_core::scanners::binary_validation::DEFAULT_LFS_THRESHOLD_BYTES,
+                project_lint_core::scanners::binary_validation::DEFAULT_MAX_SIZE_BYTES,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                Vec::new(),
+                Vec::new(),
+                excluded,
+            ),
+        };
+        perform_scanner_issues("Binary", &scanner.scan(project_path)?, &mut issues);
     }
 
     if config.is_check_enabled("terraform_lint") {

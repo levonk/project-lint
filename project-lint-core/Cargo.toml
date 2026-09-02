@@ -54,6 +54,9 @@ tree-sitter-toml = "0.20"
 # Dependency version checking
 semver = "1.0"
 
+# Content hashing for duplicate-binary detection
+sha2 = "0.10"
+
 # Force newer versions of transitive dependencies to fix security issues
 lru = "0.16"
 
