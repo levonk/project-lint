@@ -1,8 +1,10 @@
 /// Markdown frontmatter validation rules
 /// Implements ADR 20251106016: Standardized Markdown Frontmatter
+use crate::scanners::ScannerIssue;
 use regex::Regex;
 use std::path::Path;
 use tracing::debug;
+use walkdir::WalkDir;
 
 pub struct MarkdownFrontmatterRuleSet;
 
@@ -181,6 +183,180 @@ pub struct FrontmatterValidation {
     pub fields: FrontmatterFields,
 }
 
+/// Scanner wrapper that walks a project root and validates markdown frontmatter
+/// in all `.md` files using the existing `MarkdownFrontmatterRuleSet` static
+/// methods, converting errors to `ScannerIssue` with proper rule names.
+pub struct MarkdownFrontmatterScanner {
+    require_frontmatter: bool,
+    adr_dirs: Vec<String>,
+}
+
+impl MarkdownFrontmatterScanner {
+    pub fn new() -> Self {
+        Self {
+            require_frontmatter: false,
+            adr_dirs: vec![
+                "internal-docs/adr".to_string(),
+                "docs-internal/adr".to_string(),
+            ],
+        }
+    }
+
+    pub fn with_config(require_frontmatter: bool, adr_dirs: Vec<String>) -> Self {
+        let adr_dirs = if adr_dirs.is_empty() {
+            vec![
+                "internal-docs/adr".to_string(),
+                "docs-internal/adr".to_string(),
+            ]
+        } else {
+            adr_dirs
+        };
+        Self {
+            require_frontmatter,
+            adr_dirs,
+        }
+    }
+
+    pub fn scan(&self, project_path: &str) -> anyhow::Result<Vec<ScannerIssue>> {
+        let root = Path::new(project_path);
+        let mut issues = Vec::new();
+
+        for entry in WalkDir::new(root)
+            .max_depth(6)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let path = entry.path();
+            let rel = path.strip_prefix(root).unwrap_or(path);
+            let rel_str = rel.to_string_lossy();
+            if is_excluded_path(&rel_str) {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            if !name.ends_with(".md") {
+                continue;
+            }
+
+            let Ok(content) = std::fs::read_to_string(path) else {
+                continue;
+            };
+
+            let is_adr = self.is_adr_file(&rel_str);
+
+            if !content.starts_with("---") {
+                if self.require_frontmatter {
+                    issues.push(ScannerIssue::new(
+                        "md-frontmatter-present",
+                        "warning",
+                        &rel_str,
+                        "Missing frontmatter block (must start with ---)",
+                    ));
+                }
+                continue;
+            }
+
+            if !content[3..].contains("---") {
+                issues.push(ScannerIssue::new(
+                    "md-frontmatter-closed",
+                    "error",
+                    &rel_str,
+                    "Incomplete frontmatter block (missing closing ---)",
+                ));
+                continue;
+            }
+
+            match MarkdownFrontmatterRuleSet::validate_frontmatter(&content, path) {
+                Ok(_) => {}
+                Err(errors) => {
+                    for err in errors {
+                        if let Some(rule) = frontmatter_rule_for(&err, is_adr) {
+                            issues.push(ScannerIssue::new(
+                                rule,
+                                frontmatter_severity_for(rule),
+                                &rel_str,
+                                &err,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(issues)
+    }
+
+    fn is_adr_file(&self, rel: &str) -> bool {
+        self.adr_dirs
+            .iter()
+            .any(|dir| rel.starts_with(dir.as_str()))
+    }
+}
+
+impl Default for MarkdownFrontmatterScanner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn is_excluded_path(rel: &str) -> bool {
+    let segments: Vec<&str> = rel.split('/').collect();
+    segments.iter().any(|seg| {
+        matches!(
+            *seg,
+            "node_modules" | "target" | "dist" | ".next" | ".turbo" | ".git"
+        )
+    })
+}
+
+fn frontmatter_severity_for(rule: &str) -> &'static str {
+    match rule {
+        "md-frontmatter-closed" => "error",
+        "adr-id-required"
+        | "adr-id-format"
+        | "adr-status-required"
+        | "adr-status-valid"
+        | "adr-date-format"
+        | "adr-version-format" => "error",
+        _ => "warning",
+    }
+}
+
+fn frontmatter_rule_for(msg: &str, is_adr: bool) -> Option<&'static str> {
+    if msg.contains("Missing frontmatter block") {
+        Some("md-frontmatter-present")
+    } else if msg.contains("missing closing") {
+        Some("md-frontmatter-closed")
+    } else if msg.contains("Missing required field: title") || msg.contains("title field is empty")
+    {
+        Some("md-frontmatter-title")
+    } else if msg.contains("Missing required field: synopsis")
+        || msg.contains("synopsis field is empty")
+    {
+        Some("md-frontmatter-synopsis")
+    } else if msg.contains("Missing required field: tags") || msg.contains("tags array is empty") {
+        Some("md-frontmatter-tags")
+    } else if is_adr && msg.contains("ADR files must have adr-id") {
+        Some("adr-id-required")
+    } else if msg.contains("Invalid adr-id format") {
+        Some("adr-id-format")
+    } else if is_adr && msg.contains("ADR files must have status") {
+        Some("adr-status-required")
+    } else if msg.contains("Invalid status") {
+        Some("adr-status-valid")
+    } else if msg.contains("Invalid date format") {
+        Some("adr-date-format")
+    } else if msg.contains("Invalid version format") {
+        Some("adr-version-format")
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,5 +431,86 @@ version: "1.0.0"
             Path::new("internal-docs/adr/test.md"),
         );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn scan_flags_missing_title() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(
+            dir.path().join("test.md"),
+            "---\nsynopsis: \"A doc\"\ntags: [\"x\"]\n---\n# Body\n",
+        )?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(issues.iter().any(|i| i.rule == "md-frontmatter-title"));
+        Ok(())
+    }
+
+    #[test]
+    fn scan_silent_on_valid_frontmatter() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(
+            dir.path().join("test.md"),
+            "---\ntitle: \"Doc\"\nsynopsis: \"A doc\"\ntags: [\"x\"]\n---\n# Body\n",
+        )?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(issues.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn scan_silent_on_no_frontmatter_by_default() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(dir.path().join("test.md"), "# No frontmatter\n")?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(issues.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn scan_flags_missing_frontmatter_when_required() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(dir.path().join("test.md"), "# No frontmatter\n")?;
+        let scanner = MarkdownFrontmatterScanner::with_config(true, Vec::new());
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "md-frontmatter-present" && i.severity == "warning"));
+        Ok(())
+    }
+
+    #[test]
+    fn scan_flags_incomplete_frontmatter() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(
+            dir.path().join("test.md"),
+            "---\ntitle: \"Doc\"\nsynopsis: \"A doc\"\ntags: [\"x\"]\n# no closing delimiter\n",
+        )?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "md-frontmatter-closed" && i.severity == "error"));
+        Ok(())
+    }
+
+    #[test]
+    fn scan_silent_on_empty_project() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(issues.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn scan_skips_node_modules() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        let nm = dir.path().join("node_modules").join("pkg");
+        std::fs::create_dir_all(&nm)?;
+        std::fs::write(
+            nm.join("bad.md"),
+            "---\nsynopsis: \"x\"\ntags: [\"y\"]\n---\n",
+        )?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(issues.is_empty());
+        Ok(())
     }
 }

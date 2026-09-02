@@ -16,12 +16,13 @@ use project_lint_core::scanners::git::{check_branch_allowed, get_git_info};
 use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
-    ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
-    dockerfile_lint::DockerfileLintScanner, git_sync::GitSyncScanner,
-    magic_numbers::MagicNumbersScanner, rust_conventions::RustConventionsScanner,
-    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
-    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
-    ScannerIssue,
+    ci_cd_parity::CiCdParityScanner, config_validation::ConfigValidationScanner,
+    dev_environment::DevEnvironmentScanner, dockerfile_lint::DockerfileLintScanner,
+    git_sync::GitSyncScanner, magic_numbers::MagicNumbersScanner,
+    markdown_frontmatter::MarkdownFrontmatterScanner, runtime_guards::RuntimeGuardsScanner,
+    rust_conventions::RustConventionsScanner, skill_markdown::SkillMarkdownScanner,
+    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
+    vault_security::VaultSecurityScanner, ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -245,6 +246,46 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => GitSyncScanner::new(),
         };
         perform_scanner_issues("GitSync", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("config_validation") {
+        debug!("Performing config validation analysis");
+        let scanner = match &config.scanner_config.config_validation {
+            Some(c) => ConfigValidationScanner::with_config(
+                if c.required_eslint_base.is_empty() {
+                    None
+                } else {
+                    Some(c.required_eslint_base.clone())
+                },
+                c.require_type_module,
+                c.check_tailwind,
+            ),
+            None => ConfigValidationScanner::new(),
+        };
+        perform_scanner_issues("ConfigVal", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("markdown_frontmatter") {
+        debug!("Performing markdown frontmatter analysis");
+        let scanner = match &config.scanner_config.markdown_frontmatter {
+            Some(c) => {
+                MarkdownFrontmatterScanner::with_config(c.require_frontmatter, c.adr_dirs.clone())
+            }
+            None => MarkdownFrontmatterScanner::new(),
+        };
+        perform_scanner_issues("MdFM", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("runtime_guards") {
+        debug!("Performing runtime guards analysis");
+        let scanner = match &config.scanner_config.runtime_guards {
+            Some(c) => RuntimeGuardsScanner::with_config(
+                c.guards_package.clone(),
+                c.check_extensions.clone(),
+            ),
+            None => RuntimeGuardsScanner::new(),
+        };
+        perform_scanner_issues("RtGuards", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)
