@@ -14,6 +14,7 @@ pub mod package_organization;
 pub mod runtime_guards;
 pub mod rust_conventions;
 pub mod security;
+pub mod shell_script;
 pub mod skill_markdown;
 pub mod submodule_integrity;
 pub mod typescript;

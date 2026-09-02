@@ -19,9 +19,9 @@ use project_lint_core::scanners::{
     ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
     dockerfile_lint::DockerfileLintScanner, git_sync::GitSyncScanner,
     magic_numbers::MagicNumbersScanner, rust_conventions::RustConventionsScanner,
-    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
-    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
-    ScannerIssue,
+    shell_script::ShellScriptScanner, skill_markdown::SkillMarkdownScanner,
+    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
+    vault_security::VaultSecurityScanner, ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -263,6 +263,43 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => GitSyncScanner::new(),
         };
         perform_scanner_issues("GitSync", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("shell_script") {
+        debug!("Performing shell script validation (*.sh / *.bash)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.shell_script {
+            Some(c) => {
+                let forbidden = if c.forbidden_commands.is_empty() {
+                    project_lint_core::scanners::shell_script::DEFAULT_FORBIDDEN_COMMANDS
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                } else {
+                    c.forbidden_commands.clone()
+                };
+                ShellScriptScanner::with_exclusions(
+                    c.require_shebang,
+                    c.require_strict_mode,
+                    c.forbid_hardcoded_home,
+                    forbidden,
+                    c.require_devbox_run,
+                    excluded,
+                )
+            }
+            None => ShellScriptScanner::with_exclusions(
+                true,
+                true,
+                true,
+                project_lint_core::scanners::shell_script::DEFAULT_FORBIDDEN_COMMANDS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                false,
+                excluded,
+            ),
+        };
+        perform_scanner_issues("Shell", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)

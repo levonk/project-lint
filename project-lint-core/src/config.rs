@@ -58,6 +58,8 @@ pub struct ScannerConfig {
     #[serde(default)]
     pub git_sync: Option<GitSyncScannerConfig>,
     #[serde(default)]
+    pub shell_script: Option<ShellScriptScannerConfig>,
+    #[serde(default)]
     pub exclusion: Option<ExclusionConfig>,
 }
 
@@ -139,6 +141,38 @@ pub struct GitSyncScannerConfig {
     /// to `["main", "master"]` when empty.
     #[serde(default)]
     pub main_branches: Vec<String>,
+}
+
+/// `[scanner_config.shell_script]` — configuration for the shell script
+/// scanner that validates `*.sh` / `*.bash` files against the
+/// shell-scripting best-practices bundle (shebang, strict mode, guarded PATH
+/// additions, forbidden package-manager commands, devbox-run usage).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShellScriptScannerConfig {
+    /// When true, scripts must start with `#!/usr/bin/env bash`.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_shebang: bool,
+
+    /// When true, scripts must have `set -euo pipefail` after the shebang.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_strict_mode: bool,
+
+    /// When true, flag hardcoded `/Users/<user>/`, `/home/<user>/`, and
+    /// `C:\Users\` paths. Defaults to true.
+    #[serde(default = "default_true")]
+    pub forbid_hardcoded_home: bool,
+
+    /// Package-manager commands forbidden in shell scripts (e.g. `npx`,
+    /// `bunx`, `yarn dlx`). When empty, uses the scanner's built-in defaults.
+    #[serde(default)]
+    pub forbidden_commands: Vec<String>,
+
+    /// When true and the project has a `devbox.json`, build-tool invocations
+    /// should use `devbox run --`. Defaults to false.
+    #[serde(default)]
+    pub require_devbox_run: bool,
 }
 
 /// `[scanner_config.rust_file_naming]` — extra required/forbidden files and

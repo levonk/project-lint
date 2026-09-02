@@ -348,6 +348,47 @@ No new external dependencies required. All modules use existing dependencies:
 
 ---
 
+## Shell Script Validation (2026-09-02)
+
+**PRD**: [docs-internal/requirements/20260901-shell-script-validation.md](requirements/20260901-shell-script-validation.md)
+
+### Shipped
+
+- **`shell_script` scanner** (`project-lint-core/src/scanners/shell_script.rs`):
+  Validates `*.sh` / `*.bash` files against the shell-scripting best-practices
+  bundle. Uses the centralized exclusion list (`walk_project` /
+  `is_excluded_rel`) so build artifacts and `.devbox/gen/` generated scripts
+  are skipped. Gated by the `shell_script` check name.
+
+**Key Functions**:
+- `ShellScriptScanner::scan()` — walks the project for `*.sh` / `*.bash`
+  files and lints each.
+- `with_config()` / `with_exclusions()` — configurable toggles and exclusion
+  list injection.
+
+**Validations** (10 rules):
+- ✅ `sh-shebang` — must start with `#!/usr/bin/env bash` (warning)
+- ✅ `sh-strict-mode` — `set -euo pipefail` after shebang (warning)
+- ✅ `sh-exec-final-command` — final long-lived command uses `exec` (info)
+- ✅ `sh-path-addition-guard` — PATH additions guarded against duplicates (warning)
+- ✅ `sh-git-cleanliness-gate` — destructive scripts check dirty git state (warning)
+- ✅ `sh-dry-run-first` — destructive scripts support dry-run (warning)
+- ✅ `sh-bounded-timeout` — long-running ops wrapped in `timeout` (info)
+- ✅ `sh-no-hardcoded-home` — no `/Users/<user>/`, `/home/<user>/`, `C:\Users\` (warning)
+- ✅ `sh-no-npx-bunx-yarn` — no `npx`/`bunx`/`yarn dlx` (error)
+- ✅ `sh-uses-devbox-run` — build tools use `devbox run --` in devbox projects (warning)
+
+**Configuration** (`[scanner_config.shell_script]`):
+- `require_shebang` (default true)
+- `require_strict_mode` (default true)
+- `forbid_hardcoded_home` (default true)
+- `forbidden_commands` (default `["npx", "bunx", "yarn dlx"]`)
+- `require_devbox_run` (default false)
+
+**Tests**: 25 colocated unit tests (positive, negative, edge case per rule).
+
+---
+
 ## Summary
 
 ✅ **5 new modules** implementing all recommended rules
