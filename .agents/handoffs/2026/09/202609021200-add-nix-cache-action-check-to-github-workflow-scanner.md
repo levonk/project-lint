@@ -1,14 +1,14 @@
 # Handoff: Add Nix cache action check to project-lint github_workflow scanner
 
 **Date**: 2026-09-02
-**Session**: Post-acryl-PR-5 — nixify generated a workflow with `DeterminateSystems/magic-nix-cache-action` defaulting to `use-flakehub: true`, which caused FlakeHub auth failures on repos without a FlakeHub org. The nixify skill was corrected, but project-lint's `github_workflow` scanner should also catch this class of bug for any repo, not just nixify-generated ones.
+**Session**: Post-acryl-PR-5 — nixify generated a workflow with `DeterminateSystems/magic-nix-cache-action` that explicitly set `use-flakehub: true`, which caused FlakeHub auth failures on repos without a FlakeHub org. The nixify skill was corrected, but project-lint's `github_workflow` scanner should also catch this class of bug for any repo, not just nixify-generated ones.
 **Status**: Pending — scanner update not yet implemented.
 
 ## Current State
 
 ### ✅ Completed (in nixify skill)
-- **Root-cause analysis**: `magic-nix-cache-action` defaults to `use-flakehub: true`, which attempts FlakeHub OIDC authentication. If the GitHub org is not registered on FlakeHub, CI fails with: `Unable to authenticate to FlakeHub. Individuals must register at FlakeHub.com; Organizations must create an organization at FlakeHub.com.`
-- **nixify skill fix**: `references/advanced-features.md` updated with correct guidance (not "DO NOT add", but "set `use-flakehub: false` unless the project has a FlakeHub org"). `validate-pre-push.sh` now checks for `use-flakehub: true` without a corresponding `flakehub-cache-action`.
+- **Root-cause analysis**: `magic-nix-cache-action` was used with explicit `use-flakehub: true`, which attempts FlakeHub OIDC authentication. If the GitHub org is not registered on FlakeHub, CI fails with: `Unable to authenticate to FlakeHub. Individuals must register at FlakeHub.com; Organizations must create an organization at FlakeHub.com.` Omitting `use-flakehub` entirely is safe — only explicit `use-flakehub: true` is the error.
+- **nixify skill fix**: `references/advanced-features.md` updated with correct guidance (not "DO NOT add", but "do not explicitly set `use-flakehub: true` unless the project has a FlakeHub org"). `validate-pre-push.sh` now flags only explicit `use-flakehub: true` without a corresponding `flakehub-cache-action`.
 
 ### ❌ Blocking Issues
 1. **project-lint does not check for cache action misconfiguration.** The `github_workflow` scanner at `project-lint-core/src/scanners/github_workflow.rs` validates permissions, pins, timeout, concurrency, etc., but has no check for Nix cache action configuration. Any repo (not just nixify-generated ones) can hit this failure.
@@ -122,7 +122,7 @@ When `require_nix_cache: true` and a Nix workflow has no cache action:
    - Add a `require_nix_cache: bool` field to `GithubWorkflowScanner` (default `false`)
    - In `scan_workflow`, after existing checks, scan for Nix commands in `run:` steps
    - If Nix commands found and no cache action present → warning (`workflow-nix-cache-missing`)
-   - If `magic-nix-cache-action` present without `use-flakehub: false` and no `flakehub-cache-action` → error (`workflow-nix-cache-flakehub-auth`)
+   - If `magic-nix-cache-action` present with **explicit** `use-flakehub: true` and no `flakehub-cache-action` → error (`workflow-nix-cache-flakehub-auth`). Omitting `use-flakehub` is NOT an error.
 
 2. **Add auto-fix**:
    - In the scanner's `apply_fixes` method, if `workflow-nix-cache-missing` was reported, insert the magic-nix-cache-action step with `use-flakehub: false` after the nix-installer step
@@ -145,10 +145,10 @@ When `require_nix_cache: true` and a Nix workflow has no cache action:
 ## Definition of Done
 
 - [ ] `github_workflow.rs` has `require_nix_cache` field and config support
-- [ ] Detection: `workflow-nix-cache-flakehub-auth` error for use-flakehub: true without FlakeHub
+- [ ] Detection: `workflow-nix-cache-flakehub-auth` error for **explicit** `use-flakehub: true` without `flakehub-cache-action` (omitting `use-flakehub` is NOT an error)
 - [ ] Detection: `workflow-nix-cache-missing` warning for Nix workflows without cache action (when require_nix_cache=true)
 - [ ] Auto-fix: inserts magic-nix-cache-action with use-flakehub: false after nix-installer step
-- [ ] Tests: all 7 test cases above pass
+- [ ] Tests: all 8 test cases above pass
 - [ ] `cargo test` passes
 - [ ] `cargo clippy` passes
 - [ ] Config documentation updated in `docs/` if applicable
