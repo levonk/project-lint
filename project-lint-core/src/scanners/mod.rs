@@ -1,3 +1,4 @@
+pub mod agents_md;
 pub mod ast;
 pub mod ci_cd_parity;
 pub mod config_validation;
@@ -11,6 +12,7 @@ pub mod git_sync;
 pub mod magic_numbers;
 pub mod markdown_frontmatter;
 pub mod package_organization;
+pub mod path_hygiene;
 pub mod runtime_guards;
 pub mod rust_conventions;
 pub mod security;
