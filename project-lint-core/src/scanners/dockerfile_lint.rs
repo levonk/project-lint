@@ -2,14 +2,14 @@
 //! digests, no `COPY .`, and a non-root `USER` declaration.
 
 use crate::scanners::ScannerIssue;
-use crate::utils::Result;
+use crate::utils::{build_exclusions, is_excluded_rel, walk_project, Result};
 use std::path::Path;
-use walkdir::WalkDir;
 
 pub struct DockerfileLintScanner {
     require_pinned_digests: bool,
     require_non_root_user: bool,
     forbid_copy_dot: bool,
+    excluded: Vec<String>,
 }
 
 impl DockerfileLintScanner {
@@ -18,6 +18,7 @@ impl DockerfileLintScanner {
             require_pinned_digests: true,
             require_non_root_user: true,
             forbid_copy_dot: true,
+            excluded: build_exclusions(&[], false),
         }
     }
 
@@ -30,6 +31,21 @@ impl DockerfileLintScanner {
             require_pinned_digests,
             require_non_root_user,
             forbid_copy_dot,
+            excluded: build_exclusions(&[], false),
+        }
+    }
+
+    pub fn with_exclusions(
+        require_pinned_digests: bool,
+        require_non_root_user: bool,
+        forbid_copy_dot: bool,
+        excluded: Vec<String>,
+    ) -> Self {
+        Self {
+            require_pinned_digests,
+            require_non_root_user,
+            forbid_copy_dot,
+            excluded,
         }
     }
 
@@ -38,12 +54,7 @@ impl DockerfileLintScanner {
         let root = Path::new(project_path);
         let mut issues = Vec::new();
 
-        for entry in WalkDir::new(root)
-            .max_depth(4)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-        {
+        for entry in walk_project(root, &self.excluded, 4).filter(|e| e.file_type().is_file()) {
             let path = entry.path();
             let name = path.file_name().unwrap_or_default().to_string_lossy();
             if !name.starts_with("Dockerfile") && !name.ends_with(".dockerfile") {
@@ -54,6 +65,9 @@ impl DockerfileLintScanner {
                 .unwrap_or(path)
                 .to_string_lossy()
                 .to_string();
+            if is_excluded_rel(&rel, &self.excluded) {
+                continue;
+            }
             issues.extend(self.scan_dockerfile(path, &rel));
         }
 

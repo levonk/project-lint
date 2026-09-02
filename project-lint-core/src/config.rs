@@ -57,6 +57,44 @@ pub struct ScannerConfig {
     pub skill_markdown: Option<SkillMarkdownScannerConfig>,
     #[serde(default)]
     pub git_sync: Option<GitSyncScannerConfig>,
+    #[serde(default)]
+    pub exclusion: Option<ExclusionConfig>,
+}
+
+/// `[scanner_config.exclusion]` — configuration for the centralized exclusion
+/// list shared by all WalkDir-based scanners. Controls extra excluded paths
+/// beyond the built-in defaults and the `vendor/` toggle.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExclusionConfig {
+    /// Additional directory paths to exclude (appended to
+    /// `DEFAULT_EXCLUDED_DIRS`). Each entry may be a single segment
+    /// (`"my-build-dir"`) or multi-segment (`"generated/src"`).
+    #[serde(default)]
+    pub extra_excludes: Vec<String>,
+
+    /// When true, `vendor/` is NOT excluded (use for projects with first-party
+    /// `vendor/` directories). Defaults to false.
+    #[serde(default)]
+    pub allow_vendor: bool,
+
+    /// WalkDir max depth for scanners that use the shared `walk_project`
+    /// helper. Defaults to 4. Individual scanners may override.
+    #[serde(default = "default_exclusion_max_depth")]
+    pub max_depth: usize,
+}
+
+fn default_exclusion_max_depth() -> usize {
+    4
+}
+
+impl Default for ExclusionConfig {
+    fn default() -> Self {
+        Self {
+            extra_excludes: Vec::new(),
+            allow_vendor: false,
+            max_depth: default_exclusion_max_depth(),
+        }
+    }
 }
 
 /// `[scanner_config.skill_markdown]` — configuration for the SKILL.md scanner

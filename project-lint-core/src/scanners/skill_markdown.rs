@@ -14,9 +14,8 @@
 //!    of the upsert skill family.
 
 use crate::scanners::ScannerIssue;
-use crate::utils::Result;
+use crate::utils::{build_exclusions, is_excluded_rel, walk_project, Result};
 use std::path::Path;
-use walkdir::WalkDir;
 
 /// Default maximum body line count for a wrapper-pattern `SKILL.md`.
 pub const DEFAULT_MAX_BODY_LINES: usize = 80;
@@ -25,8 +24,9 @@ pub struct SkillMarkdownScanner {
     max_body_lines: usize,
     require_refresh_script: bool,
     /// Directory names that are fully exempt from scanning (e.g. `references/`).
-    /// When empty, only `target/` and `.git/` are skipped.
+    /// When empty, only the centralized exclusion list is used.
     exempt_dirs: Vec<String>,
+    excluded: Vec<String>,
 }
 
 impl SkillMarkdownScanner {
@@ -35,6 +35,7 @@ impl SkillMarkdownScanner {
             max_body_lines: DEFAULT_MAX_BODY_LINES,
             require_refresh_script: true,
             exempt_dirs: Vec::new(),
+            excluded: build_exclusions(&[], false),
         }
     }
 
@@ -47,6 +48,21 @@ impl SkillMarkdownScanner {
             max_body_lines,
             require_refresh_script,
             exempt_dirs,
+            excluded: build_exclusions(&[], false),
+        }
+    }
+
+    pub fn with_exclusions(
+        max_body_lines: usize,
+        require_refresh_script: bool,
+        exempt_dirs: Vec<String>,
+        excluded: Vec<String>,
+    ) -> Self {
+        Self {
+            max_body_lines,
+            require_refresh_script,
+            exempt_dirs,
+            excluded,
         }
     }
 
@@ -55,16 +71,11 @@ impl SkillMarkdownScanner {
         let root = Path::new(project_path);
         let mut issues = Vec::new();
 
-        for entry in WalkDir::new(root)
-            .max_depth(6)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-        {
+        for entry in walk_project(root, &self.excluded, 6).filter(|e| e.file_type().is_file()) {
             let path = entry.path();
             let rel = path.strip_prefix(root).unwrap_or(path);
             let rel_str = rel.to_string_lossy();
-            if rel_str.starts_with("target/") || rel_str.starts_with(".git/") {
+            if is_excluded_rel(&rel_str, &self.excluded) {
                 continue;
             }
             if self.is_exempt(&rel_str) {

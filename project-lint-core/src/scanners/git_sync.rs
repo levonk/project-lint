@@ -477,13 +477,15 @@ mod tests {
         assert!(diverged.message.contains("behind"));
     }
 
-    /// Push the current branch to `remote` under `branch_name`, setting up
-    /// upstream tracking.
-    fn push_current(repo: &Repository, remote: &str, branch_name: &str) {
+    /// Push the current branch to `remote`, setting up upstream tracking.
+    /// The branch name is resolved from HEAD so the test works regardless
+    /// of the git install's `init.defaultBranch` (`main` vs `master`).
+    fn push_current(repo: &Repository, remote: &str, _branch_name: &str) {
         let head = repo.head().unwrap();
         let commit = head.peel_to_commit().unwrap();
         let tree = commit.tree().unwrap();
         let sig = repo.signature().unwrap();
+        let branch_name = head.shorthand().unwrap_or("main").to_string();
         // Build a remote ref update spec: refs/heads/<branch>:refs/heads/<branch>
         let refspec = format!("+refs/heads/{}:refs/heads/{}", branch_name, branch_name);
         let mut remote = repo.find_remote(remote).unwrap();
@@ -491,7 +493,7 @@ mod tests {
             .push(&[refspec], None)
             .unwrap_or_else(|e| panic!("push failed: {}", e));
         // Set up upstream tracking for the local branch.
-        if let Ok(mut branch) = repo.find_branch(branch_name, BranchType::Local) {
+        if let Ok(mut branch) = repo.find_branch(&branch_name, BranchType::Local) {
             let _ = branch.set_upstream(Some(&format!("origin/{}", branch_name)));
         }
         // Silence unused-tree warning.

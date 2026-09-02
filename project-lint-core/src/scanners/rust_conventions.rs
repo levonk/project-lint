@@ -4,24 +4,33 @@
 //! crates declared in `Cargo.toml`.
 
 use crate::scanners::ScannerIssue;
-use crate::utils::Result;
+use crate::utils::{build_exclusions, is_excluded_rel, walk_project, Result};
 use std::path::Path;
-use walkdir::WalkDir;
 
 pub struct RustConventionsScanner {
     forbidden_crates: Vec<String>,
+    excluded: Vec<String>,
 }
 
 impl RustConventionsScanner {
     pub fn new() -> Self {
         Self {
             forbidden_crates: Vec::new(),
+            excluded: build_exclusions(&[], false),
         }
     }
 
     pub fn with_forbidden_crates(crates: Vec<String>) -> Self {
         Self {
             forbidden_crates: crates,
+            excluded: build_exclusions(&[], false),
+        }
+    }
+
+    pub fn with_exclusions(crates: Vec<String>, excluded: Vec<String>) -> Self {
+        Self {
+            forbidden_crates: crates,
+            excluded,
         }
     }
 
@@ -31,16 +40,11 @@ impl RustConventionsScanner {
         let root = Path::new(project_path);
         let mut issues = Vec::new();
 
-        for entry in WalkDir::new(root)
-            .max_depth(4)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-        {
+        for entry in walk_project(root, &self.excluded, 4).filter(|e| e.file_type().is_file()) {
             let path = entry.path();
             let rel = path.strip_prefix(root).unwrap_or(path);
             let rel_str = rel.to_string_lossy();
-            if rel_str.starts_with("target/") || rel_str.starts_with(".git/") {
+            if is_excluded_rel(&rel_str, &self.excluded) {
                 continue;
             }
             let name = path.file_name().unwrap_or_default().to_string_lossy();

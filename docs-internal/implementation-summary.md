@@ -121,6 +121,48 @@ This document summarizes the complete implementation of all recommended rules fo
 
 ---
 
+### 6. Centralized Exclusion List (`project-lint-core/src/utils.rs`)
+
+**Purpose**: Shared utility that all WalkDir-based scanners use to skip build
+artifacts, dependency directories, and VCS internals. Prevents false positives
+from scanning `node_modules/`, `target/`, `dist/`, etc. Prerequisite for all
+content-validation scanners.
+
+**Key Functions**:
+- `DEFAULT_EXCLUDED_DIRS` — const list of 12 always-excluded directories
+- `build_exclusions(extra, allow_vendor)` — assembles the full exclusion list
+  from defaults + user extras + vendor toggle
+- `is_excluded_rel(rel, excluded)` — drop-in replacement for inline
+  `rel_str.starts_with("target/")` checks (post-hoc filtering)
+- `is_excluded_entry(entry, root, excluded)` — for `WalkDir::filter_entry`
+  pruning (efficient — children of excluded dirs are never visited)
+- `walk_project(root, excluded, max_depth)` — pre-filtered WalkDir iterator
+
+**Validations**:
+- ✅ Excludes `node_modules/`, `target/`, `dist/`, `build/`, `.next/`,
+  `.turbo/`, `.nuxt/`, `.svelte-kit/`, `.git/`, `.devbox/gen/`, `.cache/`,
+  `coverage/`
+- ✅ Configurable `vendor/` exclusion (off by default, on when
+  `allow_vendor = false`)
+- ✅ User-provided `extra_excludes` appended to defaults (deduplicated)
+- ✅ Multi-segment exclusions (`.devbox/gen`) handled correctly
+- ✅ Configurable via `[scanner_config.exclusion]` TOML table
+
+**Migrated Scanners** (all now use the shared utility):
+- `rust_conventions.rs` — was inline `target/` + `.git/` check
+- `dockerfile_lint.rs` — had no filtering at all
+- `skill_markdown.rs` — was inline `target/` + `.git/` check
+- `magic_numbers.rs` — had own exempt_dirs list (kept for scanner-specific
+  dirs, layered on top of centralized list)
+- `vault_security.rs` — was inline `target/` + `.git/` + `node_modules/` check
+- `file_naming.rs` — had no filtering at all
+- `submodule_integrity.rs` — N/A (uses git2 tree walking, not WalkDir)
+
+**Tests**: 15 unit tests covering default list contents, vendor toggle,
+extra excludes, deduplication, multi-segment matching, and WalkDir pruning
+
+---
+
 ## Module Registration
 
 All modules registered in:
@@ -257,6 +299,55 @@ No new external dependencies required. All modules use existing dependencies:
 
 ---
 
+## Worktree Isolation Enforcement (2026-08-31)
+
+**PRD**: [docs-internal/requirements/20260831-worktree-isolation.md](requirements/20260831-worktree-isolation.md)
+**PRs**: [#7](https://github.com/levonk/project-lint/pull/7), [#8](https://github.com/levonk/project-lint/pull/8)
+
+### Shipped
+
+- **`worktree-isolation-enforcer` rule** (`project-lint-core/src/hooks/engine/mod.rs`):
+  - PreToolUse: blocks direct edits (Edit/Write/MultiEdit/NotebookEdit) and
+    subagent dispatch (Task/run_subagent) on protected branches in the main
+    worktree. Write-tool blocking scoped by `protected_paths` (default
+    `["src/**"]`); subagent dispatch never path-scoped.
+  - PostToolUse: re-runs protected_paths + branch check after a write lands,
+    catching writes that slipped through.
+  - Stop + SubagentStop: blocks stopping with a dirty tree on a protected
+    branch in the main worktree. Fires on every event — no once-per-session
+    suppression.
+- **Configurable `protected_branches`** — TOML field on `CustomRule`,
+  defaults to `["main", "master", "trunk", "develop"]`. No longer hardcoded.
+- **Git pre-commit + pre-push gates** — generated scripts block commits and
+  pushes to protected branches outside a linked worktree.
+- **Claude Code `settings.json`** — `install-hook --agent claude` now
+  creates `.claude/settings.json` registering PreToolUse + Stop hooks,
+  merging non-destructively with existing settings.
+- **`install-hook --agent all`** — installs both git hooks and Claude Code
+  hooks in one command.
+- **Env scrubbing** — Git subprocesses clear inherited `GIT_*` vars to
+  prevent hook-inherited state from corrupting worktree operations.
+
+### Tests
+
+- 17 worktree-isolation engine tests (tool classification, edit/subagent
+  block on main, docs-write allow, feature-branch allow, linked-worktree
+  allow, MultiEdit via tool_input, empty-defaults-to-src, PostToolUse
+  verification, Stop/SubagentStop dirty/clean, no-suppression-on-repeat,
+  configurable protected_branches).
+- 3 install-hook tests (settings.json creation, non-destructive merge,
+  `all` agent).
+
+### Open enhancements
+
+- #5 `project-lint worktree start` subcommand
+- #6 Auto-install hooks on `project-lint init`
+- #7 Worktree status in `lint` output
+- #8 Per-branch `protected_paths` scoping
+- #9 Telemetry on worktree gate hits
+
+---
+
 ## Summary
 
 ✅ **5 new modules** implementing all recommended rules
@@ -264,6 +355,7 @@ No new external dependencies required. All modules use existing dependencies:
 ✅ **0 external dependencies** added
 ✅ **100% compilation success**
 ✅ **Ready for integration** into lint command
+✅ **Worktree isolation enforcement** (PRs #7, #8) — 17 engine tests + 3 install tests
 
 The implementation provides:
 - **Package organization validation** (ADR 002)
@@ -271,5 +363,6 @@ The implementation provides:
 - **pnpm enforcement** (ADR 20251106001)
 - **Runtime guards for browser safety** (ADR 006)
 - **Configuration file validation** (tsconfig, eslint, tailwind, package.json)
+- **Worktree isolation enforcement** (configurable protected_branches, pre-commit/pre-push gates, PreToolUse/PostToolUse/Stop/SubagentStop hooks, Claude settings.json install)
 
 All modules follow project-lint's architecture patterns and are ready for production use.
