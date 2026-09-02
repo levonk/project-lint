@@ -299,6 +299,66 @@ No new external dependencies required. All modules use existing dependencies:
 
 ---
 
+## Nix Stack Scanners (2026-09-01)
+
+**PRD**: [docs-internal/requirements/20260901-nix-stack.md](requirements/20260901-nix-stack.md)
+
+### Shipped
+
+Four new scanners for Nix-based dev environment files, enhancing the existing
+`dev_environment` scanner (which only checks file presence) with actual content
+validation.
+
+- **`NixFlakeScanner`** (`project-lint-core/src/scanners/nix_flake.rs`):
+  Validates `flake.nix` (inputs have URLs, inputs pinned to ref/rev, outputs is
+  a function, has description, no spurious `flake = false`) and `flake.lock`
+  (present when flake.nix exists, fresh — all inputs have lock entries, every
+  node has narHash). Parses `flake.nix` with regex (Nix is not trivially
+  serde-parseable) and `flake.lock` as JSON via `serde_json`. Gated by the
+  `nix_flake` check name. Configurable via `[scanner_config.nix_flake]` with
+  `require_stable_nixpkgs` and `check_lock_freshness`.
+
+- **`DevboxJsonScanner`** (`project-lint-core/src/scanners/devbox_json.rs`):
+  Validates `devbox.json` as JSON — name present, packages is an object (not
+  array), `$schema` present, `devbox.lock` present, GitHub packages pinned to
+  rev/tag, init_hook not empty, scripts delegate to `just`, no `npx`/`bunx`/`yarn`
+  in scripts or init_hook. Gated by the `devbox_json` check name. Configurable
+  via `[scanner_config.devbox_json]` with `require_schema`, `require_lock`,
+  `require_scripts_use_just`, `forbidden_commands`.
+
+- **`NixShellScanner`** (`project-lint-core/src/scanners/nix_shell.rs`):
+  Validates `shell.nix` and `default.nix` — uses `pkgs.mkShell`, has
+  `buildInputs`/`packages`, no floating `import <nixpkgs>`, and `default.nix`
+  is not a shell definition. Gated by the `nix_shell` check name. Configurable
+  via `[scanner_config.nix_shell]` with `require_mkshell` and
+  `forbid_floating_nixpkgs`.
+
+- **`EnvrcContentScanner`** (`project-lint-core/src/scanners/envrc_content.rs`):
+  Validates `.envrc` files — no hardcoded secrets (regex-based), uses
+  `use devbox`/`use flake`, no `direnv allow` command, `watch_file devbox.json`
+  when using devbox, no hardcoded absolute paths. Gated by the `envrc_content`
+  check name. Configurable via `[scanner_config.envrc_content]` with
+  `require_devbox`, `require_watch_file`, `secret_patterns`.
+
+### Tests
+
+- 12 nix_flake tests (clean flake, missing lock, missing description, outputs
+  not function, floating input, unstable nixpkgs, flake=false, missing narHash,
+  lock not fresh, invalid lock JSON, empty flake, silent on non-nix repo)
+- 12 devbox_json tests (clean, packages as array, missing lock, missing
+  name/schema, floating github, pinned github, empty init_hook, script not
+  using just, forbidden npx, invalid JSON, silent, config disable)
+- 8 nix_shell tests (clean, no mkshell, no buildInputs, floating nixpkgs,
+  default.nix as shell, silent, empty, config disable)
+- 10 envrc_content tests (clean, hardcoded secret, command substitution ok,
+  missing devbox, direnv allow, missing watch_file, absolute path, silent,
+  empty, flake-based)
+
+All scanners use the centralized exclusion list (`build_exclusions()` /
+`walk_project()`) for WalkDir filtering.
+
+---
+
 ## Worktree Isolation Enforcement (2026-08-31)
 
 **PRD**: [docs-internal/requirements/20260831-worktree-isolation.md](requirements/20260831-worktree-isolation.md)

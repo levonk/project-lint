@@ -17,11 +17,12 @@ use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
     ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
-    dockerfile_lint::DockerfileLintScanner, git_sync::GitSyncScanner,
-    magic_numbers::MagicNumbersScanner, rust_conventions::RustConventionsScanner,
-    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
-    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
-    ScannerIssue,
+    devbox_json::DevboxJsonScanner, dockerfile_lint::DockerfileLintScanner,
+    envrc_content::EnvrcContentScanner, git_sync::GitSyncScanner,
+    magic_numbers::MagicNumbersScanner, nix_flake::NixFlakeScanner, nix_shell::NixShellScanner,
+    rust_conventions::RustConventionsScanner, skill_markdown::SkillMarkdownScanner,
+    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
+    vault_security::VaultSecurityScanner, ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -263,6 +264,65 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => GitSyncScanner::new(),
         };
         perform_scanner_issues("GitSync", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("nix_flake") {
+        debug!("Performing nix flake analysis (flake.nix + flake.lock)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.nix_flake {
+            Some(c) => NixFlakeScanner::with_exclusions(
+                c.require_stable_nixpkgs,
+                c.check_lock_freshness,
+                excluded,
+            ),
+            None => NixFlakeScanner::with_exclusions(false, true, excluded),
+        };
+        perform_scanner_issues("NixFlake", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("devbox_json") {
+        debug!("Performing devbox.json analysis (schema + pinning + scripts)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.devbox_json {
+            Some(c) => DevboxJsonScanner::with_exclusions(
+                c.require_schema,
+                c.require_lock,
+                c.require_scripts_use_just,
+                c.forbidden_commands.clone(),
+                excluded,
+            ),
+            None => DevboxJsonScanner::with_exclusions(true, true, true, Vec::new(), excluded),
+        };
+        perform_scanner_issues("Devbox", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("nix_shell") {
+        debug!("Performing nix shell analysis (shell.nix + default.nix)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.nix_shell {
+            Some(c) => NixShellScanner::with_exclusions(
+                c.require_mkshell,
+                c.forbid_floating_nixpkgs,
+                excluded,
+            ),
+            None => NixShellScanner::with_exclusions(true, true, excluded),
+        };
+        perform_scanner_issues("NixShell", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("envrc_content") {
+        debug!("Performing .envrc content analysis (secrets + devbox + paths)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.envrc_content {
+            Some(c) => EnvrcContentScanner::with_exclusions(
+                c.require_devbox,
+                c.require_watch_file,
+                c.secret_patterns.clone(),
+                excluded,
+            ),
+            None => EnvrcContentScanner::with_exclusions(true, true, Vec::new(), excluded),
+        };
+        perform_scanner_issues("Envrc", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)

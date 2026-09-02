@@ -58,6 +58,14 @@ pub struct ScannerConfig {
     #[serde(default)]
     pub git_sync: Option<GitSyncScannerConfig>,
     #[serde(default)]
+    pub nix_flake: Option<NixFlakeScannerConfig>,
+    #[serde(default)]
+    pub devbox_json: Option<DevboxJsonScannerConfig>,
+    #[serde(default)]
+    pub nix_shell: Option<NixShellScannerConfig>,
+    #[serde(default)]
+    pub envrc_content: Option<EnvrcContentScannerConfig>,
+    #[serde(default)]
     pub exclusion: Option<ExclusionConfig>,
 }
 
@@ -139,6 +147,116 @@ pub struct GitSyncScannerConfig {
     /// to `["main", "master"]` when empty.
     #[serde(default)]
     pub main_branches: Vec<String>,
+}
+
+/// `[scanner_config.nix_flake]` — configuration for the Nix flake scanner
+/// that validates `flake.nix` and `flake.lock` files.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NixFlakeScannerConfig {
+    /// When true, the `nixpkgs` input must not use `nixpkgs-unstable`.
+    /// Defaults to false (unstable is allowed unless this is a production repo).
+    #[serde(default)]
+    pub require_stable_nixpkgs: bool,
+
+    /// When true, check that all inputs in `flake.nix` have entries in
+    /// `flake.lock`. Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_lock_freshness: bool,
+}
+
+impl Default for NixFlakeScannerConfig {
+    fn default() -> Self {
+        Self {
+            require_stable_nixpkgs: false,
+            check_lock_freshness: default_true(),
+        }
+    }
+}
+
+/// `[scanner_config.devbox_json]` — configuration for the devbox.json scanner
+/// that validates schema, package pinning, and script content.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DevboxJsonScannerConfig {
+    /// When true, `devbox.json` should have a `$schema` field. Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_schema: bool,
+
+    /// When true, `devbox.lock` must exist when `devbox.json` exists.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_lock: bool,
+
+    /// When true, `scripts` entries should delegate to `just` targets.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_scripts_use_just: bool,
+
+    /// Commands forbidden in `scripts` and `init_hook` (e.g. `npx`, `bunx`,
+    /// `yarn`). When empty, uses the scanner's built-in defaults.
+    #[serde(default)]
+    pub forbidden_commands: Vec<String>,
+}
+
+impl Default for DevboxJsonScannerConfig {
+    fn default() -> Self {
+        Self {
+            require_schema: default_true(),
+            require_lock: default_true(),
+            require_scripts_use_just: default_true(),
+            forbidden_commands: Vec::new(),
+        }
+    }
+}
+
+/// `[scanner_config.nix_shell]` — configuration for the Nix shell scanner
+/// that validates `shell.nix` and `default.nix` files.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NixShellScannerConfig {
+    /// When true, `shell.nix` should use `pkgs.mkShell`. Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_mkshell: bool,
+
+    /// When true, flag `import <nixpkgs> {}` (floating channel). Defaults to true.
+    #[serde(default = "default_true")]
+    pub forbid_floating_nixpkgs: bool,
+}
+
+impl Default for NixShellScannerConfig {
+    fn default() -> Self {
+        Self {
+            require_mkshell: default_true(),
+            forbid_floating_nixpkgs: default_true(),
+        }
+    }
+}
+
+/// `[scanner_config.envrc_content]` — configuration for the `.envrc` content
+/// scanner that validates direnv configuration files.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvrcContentScannerConfig {
+    /// When true, `.envrc` should use `use devbox` or `use flake`. Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_devbox: bool,
+
+    /// When true, `.envrc` using devbox should `watch_file devbox.json`.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_watch_file: bool,
+
+    /// Regex patterns for detecting hardcoded secrets in `.envrc`. When empty,
+    /// uses the scanner's built-in defaults.
+    #[serde(default)]
+    pub secret_patterns: Vec<String>,
+}
+
+impl Default for EnvrcContentScannerConfig {
+    fn default() -> Self {
+        Self {
+            require_devbox: default_true(),
+            require_watch_file: default_true(),
+            secret_patterns: Vec::new(),
+        }
+    }
 }
 
 /// `[scanner_config.rust_file_naming]` — extra required/forbidden files and
