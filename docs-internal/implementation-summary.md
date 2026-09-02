@@ -364,5 +364,6 @@ The implementation provides:
 - **Runtime guards for browser safety** (ADR 006)
 - **Configuration file validation** (tsconfig, eslint, tailwind, package.json)
 - **Worktree isolation enforcement** (configurable protected_branches, pre-commit/pre-push gates, PreToolUse/PostToolUse/Stop/SubagentStop hooks, Claude settings.json install)
+- **Binary validation** (Git LFS threshold, oversized binaries, source-dir placement, duplicate detection via SHA-256, committed archives, compiled artifacts)
 
 All modules follow project-lint's architecture patterns and are ready for production use.

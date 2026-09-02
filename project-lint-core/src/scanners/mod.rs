@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod binary_validation;
 pub mod ci_cd_parity;
 pub mod config_validation;
 pub mod dependency_version_checker;

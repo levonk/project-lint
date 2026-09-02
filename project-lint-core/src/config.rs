@@ -58,6 +58,8 @@ pub struct ScannerConfig {
     #[serde(default)]
     pub git_sync: Option<GitSyncScannerConfig>,
     #[serde(default)]
+    pub binary_validation: Option<BinaryValidationConfig>,
+    #[serde(default)]
     pub exclusion: Option<ExclusionConfig>,
 }
 
@@ -139,6 +141,79 @@ pub struct GitSyncScannerConfig {
     /// to `["main", "master"]` when empty.
     #[serde(default)]
     pub main_branches: Vec<String>,
+}
+
+/// `[scanner_config.binary_validation]` — configuration for the binary
+/// validation scanner that detects binaries that should use Git LFS, oversized
+/// binaries, binaries in source directories, duplicate binaries, and committed
+/// archives / compiled artifacts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinaryValidationConfig {
+    /// Files larger than this (in bytes) should use Git LFS. Defaults to 1 MB.
+    #[serde(default = "default_binary_lfs_threshold")]
+    pub lfs_threshold_bytes: u64,
+
+    /// Hard size limit (in bytes) — files larger than this are errors.
+    /// Defaults to 10 MB.
+    #[serde(default = "default_binary_max_size")]
+    pub max_size_bytes: u64,
+
+    /// When true, emit `binary-lfs-required` for files over `lfs_threshold_bytes`.
+    #[serde(default = "default_true")]
+    pub check_lfs: bool,
+
+    /// When true, emit `binary-oversized` for files over `max_size_bytes`.
+    #[serde(default = "default_true")]
+    pub check_oversized: bool,
+
+    /// When true, emit `binary-in-source-dir` for binaries in source dirs.
+    #[serde(default = "default_true")]
+    pub check_source_dir: bool,
+
+    /// When true, emit `binary-duplicate` for identical-content binaries.
+    #[serde(default = "default_true")]
+    pub check_duplicate: bool,
+
+    /// When true, emit `binary-archive-committed` for committed archives.
+    #[serde(default = "default_true")]
+    pub check_archive: bool,
+
+    /// When true, emit `binary-compiled-artifact` for committed compiled artifacts.
+    #[serde(default = "default_true")]
+    pub check_compiled: bool,
+
+    /// Extra file extensions to treat as binary (e.g. `["dat", "bin"]`).
+    #[serde(default)]
+    pub extra_binary_extensions: Vec<String>,
+
+    /// Extra directory names to treat as source directories.
+    #[serde(default)]
+    pub extra_source_dirs: Vec<String>,
+}
+
+fn default_binary_lfs_threshold() -> u64 {
+    crate::scanners::binary_validation::DEFAULT_LFS_THRESHOLD_BYTES
+}
+
+fn default_binary_max_size() -> u64 {
+    crate::scanners::binary_validation::DEFAULT_MAX_SIZE_BYTES
+}
+
+impl Default for BinaryValidationConfig {
+    fn default() -> Self {
+        Self {
+            lfs_threshold_bytes: default_binary_lfs_threshold(),
+            max_size_bytes: default_binary_max_size(),
+            check_lfs: true,
+            check_oversized: true,
+            check_source_dir: true,
+            check_duplicate: true,
+            check_archive: true,
+            check_compiled: true,
+            extra_binary_extensions: Vec::new(),
+            extra_source_dirs: Vec::new(),
+        }
+    }
 }
 
 /// `[scanner_config.rust_file_naming]` — extra required/forbidden files and
