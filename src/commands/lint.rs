@@ -18,10 +18,11 @@ use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
     ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
     dockerfile_lint::DockerfileLintScanner, git_sync::GitSyncScanner,
-    magic_numbers::MagicNumbersScanner, rust_conventions::RustConventionsScanner,
-    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
-    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
-    ScannerIssue,
+    magic_numbers::MagicNumbersScanner, prisma_schema::PrismaSchemaScanner,
+    protobuf_lint::ProtobufLintScanner, rust_conventions::RustConventionsScanner,
+    skill_markdown::SkillMarkdownScanner, sql_migration::SqlMigrationScanner,
+    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
+    vault_security::VaultSecurityScanner, ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -263,6 +264,63 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => GitSyncScanner::new(),
         };
         perform_scanner_issues("GitSync", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("sql_migration") {
+        debug!("Performing SQL migration analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.sql_migration {
+            Some(c) => SqlMigrationScanner::with_exclusions(
+                c.require_sequential,
+                c.require_idempotent,
+                c.forbid_drop_table,
+                c.forbid_drop_database,
+                c.migration_dirs.clone(),
+                excluded,
+            ),
+            None => SqlMigrationScanner::with_exclusions(
+                true,
+                false,
+                true,
+                true,
+                vec![
+                    "migrations".to_string(),
+                    "db/migrations".to_string(),
+                    "sql/migrations".to_string(),
+                ],
+                excluded,
+            ),
+        };
+        perform_scanner_issues("SQLMig", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("protobuf_lint") {
+        debug!("Performing protobuf lint analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.protobuf_lint {
+            Some(c) => ProtobufLintScanner::with_exclusions(
+                c.require_proto3,
+                c.require_enum_zero_value,
+                excluded,
+            ),
+            None => ProtobufLintScanner::with_exclusions(true, true, excluded),
+        };
+        perform_scanner_issues("Proto", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("prisma_schema") {
+        debug!("Performing Prisma schema analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.prisma_schema {
+            Some(c) => PrismaSchemaScanner::with_exclusions(
+                c.require_datasource,
+                c.require_generator,
+                c.require_model_timestamps,
+                excluded,
+            ),
+            None => PrismaSchemaScanner::with_exclusions(true, true, false, excluded),
+        };
+        perform_scanner_issues("Prisma", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)
