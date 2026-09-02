@@ -881,3 +881,88 @@ list via `walk_project()` / `build_exclusions()`.
   path, clean template, config disable, empty template, .jinja2 extension)
 
 Total: **32 new unit tests** for the IaC stack scanners.
+
+## Data/API Stack Scanners (2026-09-02)
+
+**PRD**: [docs-internal/requirements/20260901-data-api-stack.md](requirements/20260901-data-api-stack.md)
+
+### SqlMigrationScanner (`project-lint-core/src/scanners/sql_migration.rs`)
+
+**Purpose**: Validate `*.sql` migration files for naming conventions, numbering
+gaps, dangerous operations, idempotency, and hardcoded secrets.
+
+**Key Functions**:
+- `scan()` — walks project for `*.sql` files in migration directories
+- `scan_sql_file()` — per-file content checks (DROP, SELECT *, secrets)
+- `check_numbering()` — cross-file sequential numbering gap detection
+- `check_filename_description()` — filename must include description after number
+
+**Validations**:
+- ✅ `sql-migration-no-gaps` — sequential numbering with no gaps (warning)
+- ✅ `sql-migration-has-description` — filename includes description (info)
+- ✅ `sql-migration-no-drop-table` — DROP TABLE without IF EXISTS (error)
+- ✅ `sql-migration-no-drop-database` — DROP DATABASE forbidden (error)
+- ✅ `sql-migration-transactional` — unclosed BEGIN/COMMIT (warning)
+- ✅ `sql-migration-no-select-star` — SELECT * in views (info)
+- ✅ `sql-migration-idempotent` — missing IF NOT EXISTS guards (info)
+- ✅ `sql-migration-no-hardcoded-secrets` — passwords/tokens in INSERT (error)
+
+**Tests**: 12 unit tests (positive, negative, edge cases, config toggles)
+
+### ProtobufLintScanner (`project-lint-core/src/scanners/protobuf_lint.rs`)
+
+**Purpose**: Validate `*.proto` files for syntax version, package declaration,
+field/message naming, enum zero values, reserved collisions, and unused imports.
+
+**Key Functions**:
+- `scan()` — walks project for `*.proto` files
+- `scan_proto_file()` — per-file content checks
+- `check_field_naming()` / `check_message_naming()` / `check_enum_zero_value()`
+- `find_unused_imports()` — detects imports not referenced in file body
+
+**Validations**:
+- ✅ `proto-syntax-version` — must specify `syntax = "proto3"` (warning)
+- ✅ `proto-package-present` — must have package declaration (error)
+- ✅ `proto-field-naming` — field names must be snake_case (warning)
+- ✅ `proto-message-naming` — message names must be PascalCase (warning)
+- ✅ `proto-enum-zero-value` — enum first value 0 named `_UNSPECIFIED`/`_UNKNOWN` (warning)
+- ✅ `proto-no-reserved-collision` — field numbers must not collide with reserved (error)
+- ✅ `proto-no-deprecated-fields` — deprecated fields need reserved numbers (warning)
+- ✅ `proto-imports-used` — no unused imports (info)
+
+**Tests**: 12 unit tests (positive, negative, edge cases, config toggles)
+
+### PrismaSchemaScanner (`project-lint-core/src/scanners/prisma_schema.rs`)
+
+**Purpose**: Validate `*.prisma` schema files for datasource, generator, model
+@id fields, relation indexes, cascade deletes, and hardcoded secrets.
+
+**Key Functions**:
+- `scan()` — walks project for `*.prisma` files
+- `scan_prisma_file()` — per-file block parsing and validation
+- `check_datasource()` / `check_generator()` / `check_model()`
+- `check_hardcoded_secrets()` — connection strings and passwords
+
+**Validations**:
+- ✅ `prisma-datasource-provider` — datasource block with provider (error)
+- ✅ `prisma-datasource-url` — url via env("DATABASE_URL") not hardcoded (error)
+- ✅ `prisma-model-id-field` — models must have @id field (error)
+- ✅ `prisma-model-timestamps` — createdAt/updatedAt fields (info, optional)
+- ✅ `prisma-relation-index` — @relation needs @@index (warning)
+- ✅ `prisma-no-cascade-delete` — onDelete: Cascade warning (warning)
+- ✅ `prisma-generator-client` — generator block with provider (info)
+- ✅ `prisma-no-hardcoded-secrets` — no hardcoded connection strings (error)
+
+**Tests**: 12 unit tests (positive, negative, edge cases, config toggles)
+
+### Integration
+
+All three scanners are wired into all 4 integration touch points:
+- `project-lint-core/src/scanners/mod.rs` — `pub mod` declarations
+- `src/commands/lint.rs` — gated blocks with `is_check_enabled()` + `perform_scanner_issues()`
+- `project-lint-core/src/config.rs` — `SqlMigrationConfig`, `ProtobufLintConfig`, `PrismaSchemaConfig` structs
+- `AGENTS.md` — Analysis Modules entries
+
+All scanners use the centralized exclusion list via `walk_project()` and
+`is_excluded_rel()` from `project-lint-core/src/utils.rs`. All scanners are
+silent when no matching files exist.

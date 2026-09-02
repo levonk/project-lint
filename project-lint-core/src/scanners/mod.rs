@@ -30,7 +30,9 @@ pub mod nx_project;
 pub mod package_organization;
 pub mod path_hygiene;
 pub mod pnpm_workspace;
+pub mod prisma_schema;
 pub mod process_compose;
+pub mod protobuf_lint;
 pub mod pulumi_lint;
 pub mod python_config;
 pub mod runtime_guards;
@@ -38,6 +40,7 @@ pub mod rust_conventions;
 pub mod security;
 pub mod shell_script;
 pub mod skill_markdown;
+pub mod sql_migration;
 pub mod submodule_integrity;
 pub mod terraform_lint;
 pub mod typescript;
@@ -51,7 +54,8 @@ pub mod vault_security;
 /// justfile_content, makefile_content, process_compose, nx_config,
 /// nx_project, pnpm_workspace, node_modules_integrity, shell_script,
 /// agents_md, path_hygiene, python_config, go_config, gradle_config,
-/// terraform_lint, pulumi_lint, ansible_lint, jinja_template). Carries enough
+/// terraform_lint, pulumi_lint, ansible_lint, jinja_template,
+/// sql_migration, protobuf_lint, prisma_schema). Carries enough
 /// context for the lint command to format a human-readable line and for tests
 /// to assert on severity/file/message.
 #[derive(Debug, Clone, PartialEq, Eq)]

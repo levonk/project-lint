@@ -113,6 +113,12 @@ pub struct ScannerConfig {
     pub ansible_lint: Option<AnsibleLintConfig>,
     #[serde(default)]
     pub jinja_template: Option<JinjaTemplateConfig>,
+    #[serde(default)]
+    pub sql_migration: Option<SqlMigrationConfig>,
+    #[serde(default)]
+    pub protobuf_lint: Option<ProtobufLintConfig>,
+    #[serde(default)]
+    pub prisma_schema: Option<PrismaSchemaConfig>,
 }
 
 /// `[scanner_config.python_config]` — configuration for the Python config
@@ -198,6 +204,108 @@ pub struct JinjaTemplateConfig {
 
 fn default_forbidden_jinja_filters() -> Vec<String> {
     vec!["eval".to_string(), "exec".to_string()]
+}
+
+/// `[scanner_config.sql_migration]` — configuration for the SQL migration
+/// scanner that validates `*.sql` migration files for naming conventions,
+/// numbering gaps, dangerous operations, idempotency, and hardcoded secrets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SqlMigrationConfig {
+    /// When true, check for sequential migration numbering with no gaps.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_sequential: bool,
+
+    /// When true, flag DDL migrations lacking IF NOT EXISTS / BEGIN/COMMIT
+    /// guards. Defaults to false.
+    #[serde(default)]
+    pub require_idempotent: bool,
+
+    /// When true, flag DROP TABLE without IF EXISTS. Defaults to true.
+    #[serde(default = "default_true")]
+    pub forbid_drop_table: bool,
+
+    /// When true, flag any DROP DATABASE. Defaults to true.
+    #[serde(default = "default_true")]
+    pub forbid_drop_database: bool,
+
+    /// Directory names where migration files are expected.
+    /// Defaults to `["migrations", "db/migrations", "sql/migrations"]`.
+    #[serde(default = "default_sql_migration_dirs")]
+    pub migration_dirs: Vec<String>,
+}
+
+fn default_sql_migration_dirs() -> Vec<String> {
+    vec![
+        "migrations".to_string(),
+        "db/migrations".to_string(),
+        "sql/migrations".to_string(),
+    ]
+}
+
+impl Default for SqlMigrationConfig {
+    fn default() -> Self {
+        Self {
+            require_sequential: true,
+            require_idempotent: false,
+            forbid_drop_table: true,
+            forbid_drop_database: true,
+            migration_dirs: default_sql_migration_dirs(),
+        }
+    }
+}
+
+/// `[scanner_config.protobuf_lint]` — configuration for the Protobuf lint
+/// scanner that validates `*.proto` files for syntax version, package
+/// declaration, field/message naming, and enum zero values.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProtobufLintConfig {
+    /// When true, require `syntax = "proto3"`. Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_proto3: bool,
+
+    /// When true, require enum first value to be 0 and named `_UNSPECIFIED`
+    /// or `_UNKNOWN`. Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_enum_zero_value: bool,
+}
+
+impl Default for ProtobufLintConfig {
+    fn default() -> Self {
+        Self {
+            require_proto3: true,
+            require_enum_zero_value: true,
+        }
+    }
+}
+
+/// `[scanner_config.prisma_schema]` — configuration for the Prisma schema
+/// scanner that validates `*.prisma` files for datasource, generator, model
+/// @id fields, relation indexes, and hardcoded secrets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrismaSchemaConfig {
+    /// When true, require a datasource block with provider. Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_datasource: bool,
+
+    /// When true, require a generator block with provider. Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_generator: bool,
+
+    /// When true, require models to have createdAt and updatedAt fields.
+    /// Defaults to false.
+    #[serde(default)]
+    pub require_model_timestamps: bool,
+}
+
+impl Default for PrismaSchemaConfig {
+    fn default() -> Self {
+        Self {
+            require_datasource: true,
+            require_generator: true,
+            require_model_timestamps: false,
+        }
+    }
 }
 
 /// `[scanner_config.exclusion]` — configuration for the centralized exclusion
