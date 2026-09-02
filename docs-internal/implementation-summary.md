@@ -257,6 +257,55 @@ No new external dependencies required. All modules use existing dependencies:
 
 ---
 
+## Worktree Isolation Enforcement (2026-08-31)
+
+**PRD**: [docs-internal/requirements/20260831-worktree-isolation.md](requirements/20260831-worktree-isolation.md)
+**PRs**: [#7](https://github.com/levonk/project-lint/pull/7), [#8](https://github.com/levonk/project-lint/pull/8)
+
+### Shipped
+
+- **`worktree-isolation-enforcer` rule** (`project-lint-core/src/hooks/engine/mod.rs`):
+  - PreToolUse: blocks direct edits (Edit/Write/MultiEdit/NotebookEdit) and
+    subagent dispatch (Task/run_subagent) on protected branches in the main
+    worktree. Write-tool blocking scoped by `protected_paths` (default
+    `["src/**"]`); subagent dispatch never path-scoped.
+  - PostToolUse: re-runs protected_paths + branch check after a write lands,
+    catching writes that slipped through.
+  - Stop + SubagentStop: blocks stopping with a dirty tree on a protected
+    branch in the main worktree. Fires on every event — no once-per-session
+    suppression.
+- **Configurable `protected_branches`** — TOML field on `CustomRule`,
+  defaults to `["main", "master", "trunk", "develop"]`. No longer hardcoded.
+- **Git pre-commit + pre-push gates** — generated scripts block commits and
+  pushes to protected branches outside a linked worktree.
+- **Claude Code `settings.json`** — `install-hook --agent claude` now
+  creates `.claude/settings.json` registering PreToolUse + Stop hooks,
+  merging non-destructively with existing settings.
+- **`install-hook --agent all`** — installs both git hooks and Claude Code
+  hooks in one command.
+- **Env scrubbing** — Git subprocesses clear inherited `GIT_*` vars to
+  prevent hook-inherited state from corrupting worktree operations.
+
+### Tests
+
+- 17 worktree-isolation engine tests (tool classification, edit/subagent
+  block on main, docs-write allow, feature-branch allow, linked-worktree
+  allow, MultiEdit via tool_input, empty-defaults-to-src, PostToolUse
+  verification, Stop/SubagentStop dirty/clean, no-suppression-on-repeat,
+  configurable protected_branches).
+- 3 install-hook tests (settings.json creation, non-destructive merge,
+  `all` agent).
+
+### Open enhancements
+
+- #5 `project-lint worktree start` subcommand
+- #6 Auto-install hooks on `project-lint init`
+- #7 Worktree status in `lint` output
+- #8 Per-branch `protected_paths` scoping
+- #9 Telemetry on worktree gate hits
+
+---
+
 ## Summary
 
 ✅ **5 new modules** implementing all recommended rules
@@ -264,6 +313,7 @@ No new external dependencies required. All modules use existing dependencies:
 ✅ **0 external dependencies** added
 ✅ **100% compilation success**
 ✅ **Ready for integration** into lint command
+✅ **Worktree isolation enforcement** (PRs #7, #8) — 17 engine tests + 3 install tests
 
 The implementation provides:
 - **Package organization validation** (ADR 002)
@@ -271,5 +321,6 @@ The implementation provides:
 - **pnpm enforcement** (ADR 20251106001)
 - **Runtime guards for browser safety** (ADR 006)
 - **Configuration file validation** (tsconfig, eslint, tailwind, package.json)
+- **Worktree isolation enforcement** (configurable protected_branches, pre-commit/pre-push gates, PreToolUse/PostToolUse/Stop/SubagentStop hooks, Claude settings.json install)
 
 All modules follow project-lint's architecture patterns and are ready for production use.
