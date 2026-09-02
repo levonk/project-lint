@@ -59,6 +59,12 @@ pub struct ScannerConfig {
     pub git_sync: Option<GitSyncScannerConfig>,
     #[serde(default)]
     pub exclusion: Option<ExclusionConfig>,
+    #[serde(default)]
+    pub config_validation: Option<ConfigValidationScannerConfig>,
+    #[serde(default)]
+    pub markdown_frontmatter: Option<MarkdownFrontmatterScannerConfig>,
+    #[serde(default)]
+    pub runtime_guards: Option<RuntimeGuardsScannerConfig>,
 }
 
 /// `[scanner_config.exclusion]` — configuration for the centralized exclusion
@@ -95,6 +101,67 @@ impl Default for ExclusionConfig {
             max_depth: default_exclusion_max_depth(),
         }
     }
+}
+
+/// `[scanner_config.config_validation]` — configuration for the config file
+/// validation scanner that checks tsconfig.json, eslint.config.*, tailwind
+/// config, and package.json for best-practice settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigValidationScannerConfig {
+    /// Required ESLint base config package. Set to an empty string to disable
+    /// the eslint-config-base check. Defaults to
+    /// `@job-aide/tools-lint-eslint-config`.
+    #[serde(default = "default_eslint_base")]
+    pub required_eslint_base: String,
+
+    /// When true, require `"type": "module"` (or any `"type"` field) in
+    /// package.json. Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_type_module: bool,
+
+    /// When true, scan tailwind config files for extension and content rules.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_tailwind: bool,
+}
+
+fn default_eslint_base() -> String {
+    "@job-aide/tools-lint-eslint-config".to_string()
+}
+
+/// `[scanner_config.markdown_frontmatter]` — configuration for the markdown
+/// frontmatter scanner that validates YAML frontmatter in `.md` files.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarkdownFrontmatterScannerConfig {
+    /// When true, warn on any `.md` file that lacks frontmatter entirely.
+    /// Defaults to false (only validate frontmatter when present).
+    #[serde(default)]
+    pub require_frontmatter: bool,
+
+    /// Directory prefixes where ADR-specific rules apply (adr-id, status,
+    /// date, version validation). Defaults to
+    /// `["internal-docs/adr", "docs-internal/adr"]` when empty.
+    #[serde(default)]
+    pub adr_dirs: Vec<String>,
+}
+
+/// `[scanner_config.runtime_guards]` — configuration for the runtime guards
+/// scanner that detects unguarded browser API access in TS/JS files.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeGuardsScannerConfig {
+    /// The runtime-guards package name to look for in imports. Defaults to
+    /// `@job-aide/runtime-guards`.
+    #[serde(default = "default_guards_package")]
+    pub guards_package: String,
+
+    /// File extensions to scan (without the dot). Defaults to
+    /// `["ts", "tsx", "mts", "js", "jsx"]` when empty.
+    #[serde(default)]
+    pub check_extensions: Vec<String>,
+}
+
+fn default_guards_package() -> String {
+    "@job-aide/runtime-guards".to_string()
 }
 
 /// `[scanner_config.skill_markdown]` — configuration for the SKILL.md scanner

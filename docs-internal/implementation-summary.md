@@ -348,6 +348,72 @@ No new external dependencies required. All modules use existing dependencies:
 
 ---
 
+## Wire Dead Scanners (2026-09-02)
+
+**PRD**: [docs-internal/requirements/20260901-wire-dead-scanners.md](requirements/20260901-wire-dead-scanners.md)
+
+Three scanners existed in `project-lint-core/src/scanners/` but were never
+wired into `src/commands/lint.rs::run` — dead code. This section documents the
+adapter wrappers and integration work that brought them online.
+
+### Config Validation (`config_validation.rs`)
+
+**Purpose**: Validate tsconfig.json, eslint.config.*, tailwind.config.*, and
+package.json for best-practice settings.
+
+**Wrapper**: `ConfigValidationScanner` — walks the project root, calls the
+existing `ConfigValidationRuleSet` static methods, and converts
+`ConfigViolation` to `ScannerIssue` with rule names:
+`tsconfig-strict-mode`, `tsconfig-module-resolution`,
+`tsconfig-no-ambiguous-alias`, `tsconfig-rootdir`, `tsconfig-outdir`,
+`eslint-config-extension`, `eslint-config-base`, `eslint-runtime-guards-plugin`,
+`tailwind-config-extension`, `tailwind-content-present`,
+`tailwind-content-not-empty`, `package-json-type-field`,
+`package-json-exports-field`, `package-json-no-npm-scripts`,
+`package-json-no-yarn-scripts`.
+
+**Config**: `[scanner_config.config_validation]` — `required_eslint_base`,
+`require_type_module`, `check_tailwind`.
+
+**Tests**: 13 (8 existing static-method tests + 5 new scan() wrapper tests).
+
+### Markdown Frontmatter (`markdown_frontmatter.rs`)
+
+**Purpose**: Validate YAML frontmatter in `.md` files — required fields
+(title, synopsis, tags), frontmatter delimiters, and ADR-specific rules.
+
+**Wrapper**: `MarkdownFrontmatterScanner` — walks the project root for `.md`
+files, calls `MarkdownFrontmatterRuleSet::validate_frontmatter`, and converts
+errors to `ScannerIssue` with rule names: `md-frontmatter-present`,
+`md-frontmatter-closed`, `md-frontmatter-title`, `md-frontmatter-synopsis`,
+`md-frontmatter-tags`, `adr-id-required`, `adr-id-format`,
+`adr-status-required`, `adr-status-valid`, `adr-date-format`,
+`adr-version-format`.
+
+**Config**: `[scanner_config.markdown_frontmatter]` — `require_frontmatter`,
+`adr_dirs`.
+
+**Tests**: 13 (6 existing static-method tests + 7 new scan() wrapper tests).
+
+### Runtime Guards (`runtime_guards.rs`)
+
+**Purpose**: Detect unguarded browser API access in TS/JS files.
+
+**Wrapper**: `RuntimeGuardsScanner` — walks the project root for TS/JS files,
+calls `RuntimeGuardsRuleSet::check_unguarded_browser_access`, and converts
+`BrowserAccessViolation` to `ScannerIssue` with rule names:
+`runtime-guard-window-access`, `runtime-guard-document-access`,
+`runtime-guard-navigator-access`, `runtime-guard-localstorage-access`,
+`runtime-guard-sessionstorage-access`, `runtime-guard-typeof-window`,
+`runtime-guard-typeof-document`.
+
+**Config**: `[scanner_config.runtime_guards]` — `guards_package`,
+`check_extensions`.
+
+**Tests**: 12 (6 existing static-method tests + 6 new scan() wrapper tests).
+
+---
+
 ## Summary
 
 ✅ **5 new modules** implementing all recommended rules
