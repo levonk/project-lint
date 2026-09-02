@@ -59,6 +59,14 @@ pub struct ScannerConfig {
     pub git_sync: Option<GitSyncScannerConfig>,
     #[serde(default)]
     pub exclusion: Option<ExclusionConfig>,
+    #[serde(default)]
+    pub terraform_lint: Option<TerraformLintConfig>,
+    #[serde(default)]
+    pub pulumi_lint: Option<PulumiLintConfig>,
+    #[serde(default)]
+    pub ansible_lint: Option<AnsibleLintConfig>,
+    #[serde(default)]
+    pub jinja_template: Option<JinjaTemplateConfig>,
 }
 
 /// `[scanner_config.exclusion]` — configuration for the centralized exclusion
@@ -261,6 +269,57 @@ pub struct MagicNumbersScannerConfig {
     /// When true, ignore inline `# project-lint: disable=...` overrides.
     #[serde(default)]
     pub ignore_overrides: bool,
+}
+
+/// `[scanner_config.terraform_lint]` — Terraform .tf/.tfvars lint toggles.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TerraformLintConfig {
+    /// When true, require a `backend` block in the `terraform` block.
+    #[serde(default = "default_true")]
+    pub require_backend: bool,
+    /// When true, require `.terraform.lock.hcl` to be committed when .tf files exist.
+    #[serde(default = "default_true")]
+    pub require_lockfile: bool,
+    /// When true, flag hardcoded secret literals in .tf files.
+    #[serde(default = "default_true")]
+    pub forbid_hardcoded_secrets: bool,
+}
+
+/// `[scanner_config.pulumi_lint]` — Pulumi.yaml lint toggles.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PulumiLintConfig {
+    /// When true, require a `config:` section in Pulumi.yaml.
+    #[serde(default = "default_true")]
+    pub require_config: bool,
+    /// When true, flag plaintext secret values in the config section.
+    #[serde(default = "default_true")]
+    pub forbid_secrets_in_config: bool,
+}
+
+/// `[scanner_config.ansible_lint]` — Ansible playbook / ansible.cfg lint toggles.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AnsibleLintConfig {
+    /// When true, flag `host_key_checking = False` in ansible.cfg.
+    #[serde(default = "default_true")]
+    pub forbid_host_key_checking: bool,
+    /// When true, require `name:` on every task in playbooks.
+    #[serde(default = "default_true")]
+    pub require_task_names: bool,
+}
+
+/// `[scanner_config.jinja_template]` — Jinja2 template (.j2/.jinja2) lint toggles.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct JinjaTemplateConfig {
+    /// Jinja2 filters that are forbidden (e.g. `["eval", "exec"]`).
+    #[serde(default = "default_forbidden_jinja_filters")]
+    pub forbidden_filters: Vec<String>,
+    /// When true, flag absolute paths in `{% include %}` / `{% extends %}`.
+    #[serde(default = "default_true")]
+    pub forbid_absolute_paths: bool,
+}
+
+fn default_forbidden_jinja_filters() -> Vec<String> {
+    vec!["eval".to_string(), "exec".to_string()]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

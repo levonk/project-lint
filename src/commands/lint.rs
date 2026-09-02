@@ -16,10 +16,12 @@ use project_lint_core::scanners::git::{check_branch_allowed, get_git_info};
 use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
-    ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
-    dockerfile_lint::DockerfileLintScanner, git_sync::GitSyncScanner,
-    magic_numbers::MagicNumbersScanner, rust_conventions::RustConventionsScanner,
-    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
+    ansible_lint::AnsibleLintScanner, ci_cd_parity::CiCdParityScanner,
+    dev_environment::DevEnvironmentScanner, dockerfile_lint::DockerfileLintScanner,
+    git_sync::GitSyncScanner, jinja_template::JinjaTemplateScanner,
+    magic_numbers::MagicNumbersScanner, pulumi_lint::PulumiLintScanner,
+    rust_conventions::RustConventionsScanner, skill_markdown::SkillMarkdownScanner,
+    submodule_integrity::SubmoduleIntegrityScanner, terraform_lint::TerraformLintScanner,
     typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
     ScannerIssue,
 };
@@ -263,6 +265,67 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => GitSyncScanner::new(),
         };
         perform_scanner_issues("GitSync", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("terraform_lint") {
+        debug!("Performing Terraform lint analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.terraform_lint {
+            Some(c) => TerraformLintScanner::with_exclusions(
+                c.require_backend,
+                c.require_lockfile,
+                c.forbid_hardcoded_secrets,
+                excluded,
+            ),
+            None => TerraformLintScanner::with_exclusions(true, true, true, excluded),
+        };
+        perform_scanner_issues("Terraform", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("pulumi_lint") {
+        debug!("Performing Pulumi lint analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.pulumi_lint {
+            Some(c) => PulumiLintScanner::with_exclusions(
+                c.require_config,
+                c.forbid_secrets_in_config,
+                excluded,
+            ),
+            None => PulumiLintScanner::with_exclusions(true, true, excluded),
+        };
+        perform_scanner_issues("Pulumi", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("ansible_lint") {
+        debug!("Performing Ansible lint analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.ansible_lint {
+            Some(c) => AnsibleLintScanner::with_exclusions(
+                c.forbid_host_key_checking,
+                c.require_task_names,
+                excluded,
+            ),
+            None => AnsibleLintScanner::with_exclusions(true, true, excluded),
+        };
+        perform_scanner_issues("Ansible", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("jinja_template") {
+        debug!("Performing Jinja2 template analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.jinja_template {
+            Some(c) => JinjaTemplateScanner::with_exclusions(
+                c.forbidden_filters.clone(),
+                c.forbid_absolute_paths,
+                excluded,
+            ),
+            None => JinjaTemplateScanner::with_exclusions(
+                vec!["eval".to_string(), "exec".to_string()],
+                true,
+                excluded,
+            ),
+        };
+        perform_scanner_issues("Jinja", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)
