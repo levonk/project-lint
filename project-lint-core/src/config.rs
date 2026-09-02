@@ -59,6 +59,16 @@ pub struct ScannerConfig {
     pub git_sync: Option<GitSyncScannerConfig>,
     #[serde(default)]
     pub exclusion: Option<ExclusionConfig>,
+    #[serde(default)]
+    pub github_workflow: Option<GithubWorkflowConfig>,
+    #[serde(default)]
+    pub dependabot: Option<DependabotConfig>,
+    #[serde(default)]
+    pub justfile_content: Option<JustfileContentConfig>,
+    #[serde(default)]
+    pub makefile_content: Option<MakefileContentConfig>,
+    #[serde(default)]
+    pub process_compose: Option<ProcessComposeConfig>,
 }
 
 /// `[scanner_config.exclusion]` — configuration for the centralized exclusion
@@ -93,6 +103,114 @@ impl Default for ExclusionConfig {
             extra_excludes: Vec::new(),
             allow_vendor: false,
             max_depth: default_exclusion_max_depth(),
+        }
+    }
+}
+
+/// `[scanner_config.github_workflow]` — configuration for the GitHub Actions
+/// workflow content scanner.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubWorkflowConfig {
+    #[serde(default = "default_true")]
+    pub require_permissions: bool,
+    #[serde(default = "default_true")]
+    pub require_pinned_actions: bool,
+    #[serde(default = "default_true")]
+    pub require_timeout: bool,
+    #[serde(default = "default_true")]
+    pub require_devbox: bool,
+    #[serde(default = "default_true")]
+    pub forbid_pull_request_target: bool,
+}
+
+impl Default for GithubWorkflowConfig {
+    fn default() -> Self {
+        Self {
+            require_permissions: true,
+            require_pinned_actions: true,
+            require_timeout: true,
+            require_devbox: true,
+            forbid_pull_request_target: true,
+        }
+    }
+}
+
+/// `[scanner_config.dependabot]` — configuration for the dependabot.yml
+/// scanner.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DependabotConfig {
+    #[serde(default = "default_true")]
+    pub check_ecosystem_coverage: bool,
+    #[serde(default)]
+    pub require_group_config: bool,
+}
+
+impl Default for DependabotConfig {
+    fn default() -> Self {
+        Self {
+            check_ecosystem_coverage: true,
+            require_group_config: false,
+        }
+    }
+}
+
+/// `[scanner_config.justfile_content]` — configuration for the justfile
+/// content scanner.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JustfileContentConfig {
+    #[serde(default = "default_true")]
+    pub require_devbox_wrapper: bool,
+    #[serde(default = "default_justfile_forbidden_commands")]
+    pub forbidden_commands: Vec<String>,
+    #[serde(default = "default_justfile_required_targets")]
+    pub required_targets: Vec<String>,
+}
+
+fn default_justfile_forbidden_commands() -> Vec<String> {
+    vec!["npx".to_string(), "bunx".to_string(), "yarn".to_string()]
+}
+
+fn default_justfile_required_targets() -> Vec<String> {
+    vec![
+        "quality".to_string(),
+        "quality-full".to_string(),
+        "ci".to_string(),
+    ]
+}
+
+impl Default for JustfileContentConfig {
+    fn default() -> Self {
+        Self {
+            require_devbox_wrapper: true,
+            forbidden_commands: default_justfile_forbidden_commands(),
+            required_targets: default_justfile_required_targets(),
+        }
+    }
+}
+
+/// `[scanner_config.makefile_content]` — configuration for the Makefile
+/// content scanner.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MakefileContentConfig {
+    #[serde(default)]
+    pub require_just_delegation: bool,
+}
+
+/// `[scanner_config.process_compose]` — configuration for the
+/// process-compose.yaml scanner.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessComposeConfig {
+    #[serde(default = "default_true")]
+    pub require_health_check: bool,
+    #[serde(default = "default_true")]
+    pub require_devbox: bool,
+}
+
+impl Default for ProcessComposeConfig {
+    fn default() -> Self {
+        Self {
+            require_health_check: true,
+            require_devbox: true,
         }
     }
 }
