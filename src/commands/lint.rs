@@ -16,12 +16,12 @@ use project_lint_core::scanners::git::{check_branch_allowed, get_git_info};
 use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
-    ci_cd_parity::CiCdParityScanner, dev_environment::DevEnvironmentScanner,
-    dockerfile_lint::DockerfileLintScanner, git_sync::GitSyncScanner,
-    magic_numbers::MagicNumbersScanner, rust_conventions::RustConventionsScanner,
-    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
-    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
-    ScannerIssue,
+    ci_cd_parity::CiCdParityScanner, compose_lint::ComposeLintScanner,
+    dev_environment::DevEnvironmentScanner, dockerfile_lint::DockerfileLintScanner,
+    git_sync::GitSyncScanner, magic_numbers::MagicNumbersScanner,
+    rust_conventions::RustConventionsScanner, skill_markdown::SkillMarkdownScanner,
+    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
+    vault_security::VaultSecurityScanner, ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -159,15 +159,50 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
         debug!("Performing Dockerfile lint analysis");
         let excluded = build_exclusions_from_config(&config);
         let scanner = match &config.scanner_config.dockerfile_security {
-            Some(c) => DockerfileLintScanner::with_exclusions(
+            Some(c) => DockerfileLintScanner::with_full_config(
                 c.require_pinned_digests,
                 c.require_non_root_user,
                 c.forbid_copy_dot,
+                c.require_healthcheck,
+                c.require_apk_no_cache,
+                c.require_apt_no_install_recommends,
+                c.require_dockerignore,
+                c.exempt_from_digest_pinning.clone(),
                 excluded,
             ),
             None => DockerfileLintScanner::with_exclusions(true, true, true, excluded),
         };
         perform_scanner_issues("Docker", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("compose_lint") {
+        debug!("Performing Compose lint analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.compose_lint {
+            Some(c) => ComposeLintScanner::with_exclusions(
+                c.require_pinned_digests,
+                c.require_healthcheck,
+                c.require_resource_limits,
+                c.require_no_new_privileges,
+                c.forbid_privileged,
+                c.forbid_docker_sock,
+                c.ops_mode,
+                c.exempt_proxy_labels.clone(),
+                excluded,
+            ),
+            None => ComposeLintScanner::with_exclusions(
+                true,
+                true,
+                false,
+                true,
+                true,
+                true,
+                false,
+                vec!["com.dockerproxy.role".to_string()],
+                excluded,
+            ),
+        };
+        perform_scanner_issues("Compose", &scanner.scan(project_path)?, &mut issues);
     }
 
     if config.is_check_enabled("typescript_monorepo") {

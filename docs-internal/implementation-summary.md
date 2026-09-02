@@ -348,6 +348,71 @@ No new external dependencies required. All modules use existing dependencies:
 
 ---
 
+## Container Stack (2026-09-02)
+
+**PRD**: [docs-internal/requirements/20260901-container-stack.md](requirements/20260901-container-stack.md)
+
+### compose_lint (NEW)
+
+**File**: `project-lint-core/src/scanners/compose_lint.rs`
+
+**Purpose**: Lint `docker-compose*.yml` / `compose*.yml` files for container
+hardening best practices using `serde_yaml` for robust YAML parsing.
+
+**Key Functions**:
+- `ComposeLintScanner::new()` — sensible defaults (digests, healthcheck,
+  no-new-privileges, no-privileged, no-docker-sock all on)
+- `ComposeLintScanner::with_config(...)` — toggle individual rules
+- `ComposeLintScanner::with_exclusions(...)` — config + centralized exclusion list
+- `scan(project_path)` — walks project for compose files, parses each with
+  `serde_yaml`, checks each service against the rules
+
+**Validations** (16 rules):
+- `compose-pinned-images` (error) — images must be pinned by digest
+- `compose-no-latest-tag` (error) — no `:latest` tag
+- `compose-no-floating-tag` (warning) — no floating major tags without digest
+- `compose-no-privileged` (error) — no `privileged: true`
+- `compose-security-opt` (warning) — `security_opt: ["no-new-privileges:true"]`
+- `compose-no-docker-sock-mount` (error) — no `/var/run/docker.sock` (exempt by proxy label)
+- `compose-no-root-user` (warning) — must specify `user:`
+- `compose-no-host-network` (warning) — no `network_mode: host`
+- `compose-no-host-pid` (warning) — no `pid: host`
+- `compose-cap-drop` (warning) — `cap_drop: ["ALL"]`
+- `compose-readonly-filesystem` (info) — `read_only: true`
+- `compose-healthcheck` (warning) — must define `healthcheck`
+- `compose-restart-policy` (info) — `restart: unless-stopped` or `always`
+- `compose-resource-limits` (warning) — `deploy.resources.limits` (when required)
+- `compose-no-bind-0.0.0.0` (warning) — no `0.0.0.0` port bindings
+- `compose-watchtower-labels` (info) — watchtower/wud labels (ops_mode only)
+- `compose-parse-error` (error) — malformed YAML
+
+**Tests**: 17 unit tests (positive, negative, edge case, ops mode, resource
+limits, proxy label exemption, compose.yml/override variants, malformed/empty)
+
+### dockerfile_lint (ENHANCED)
+
+**File**: `project-lint-core/src/scanners/dockerfile_lint.rs`
+
+**Purpose**: Enhanced from 3 rules to 10 rules covering the full container
+hardening checklist.
+
+**New Validations** (in addition to existing 3):
+- `dockerfile-no-latest-tag` (error) — `FROM` must not use `:latest` or untagged
+- `dockerfile-healthcheck` (warning) — must define `HEALTHCHECK`
+- `dockerfile-apk-no-cache` (warning) — `apk add` must use `--no-cache`
+- `dockerfile-apt-get-no-install-recommends` (warning) — `apt-get install` must use `--no-install-recommends`
+- `dockerfile-apt-get-clean` (warning) — `apt-get install` must clean up `/var/lib/apt/lists/*`
+- `dockerfile-dockerignore-present` (warning) — project with Dockerfile must have `.dockerignore`
+- `dockerfile-multi-stage` (info) — Dockerfiles with `RUN` install commands should use multi-stage builds
+- `dockerfile-distroless-scratch-exempt` — `scratch` and `gcr.io/distroless/static:nonroot` exempt from digest pinning
+
+**New Constructors**:
+- `with_full_config(...)` — full control over all 8 toggles + exempt list + exclusions
+
+**Tests**: 16 unit tests (existing 3 preserved + 13 new for enhanced rules)
+
+---
+
 ## Summary
 
 ✅ **5 new modules** implementing all recommended rules
