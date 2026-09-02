@@ -16,7 +16,7 @@ use project_lint_core::scanners::git::{check_branch_allowed, get_git_info};
 use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
-    ci_cd_parity::CiCdParityScanner, compose_lint::ComposeLintScanner,
+    agents_md::AgentsMdScanner, ci_cd_parity::CiCdParityScanner, compose_lint::ComposeLintScanner,
     config_validation::ConfigValidationScanner, dependabot::DependabotScanner,
     dev_environment::DevEnvironmentScanner, devbox_json::DevboxJsonScanner,
     dockerfile_lint::DockerfileLintScanner, envrc_content::EnvrcContentScanner,
@@ -25,12 +25,12 @@ use project_lint_core::scanners::{
     makefile_content::MakefileContentScanner, markdown_frontmatter::MarkdownFrontmatterScanner,
     nix_flake::NixFlakeScanner, nix_shell::NixShellScanner,
     node_modules_integrity::NodeModulesIntegrityScanner, nx_config::NxConfigScanner,
-    nx_project::NxProjectScanner, pnpm_workspace::PnpmWorkspaceScanner,
-    process_compose::ProcessComposeScanner, runtime_guards::RuntimeGuardsScanner,
-    rust_conventions::RustConventionsScanner, shell_script::ShellScriptScanner,
-    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
-    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
-    ScannerIssue,
+    nx_project::NxProjectScanner, path_hygiene::PathHygieneScanner,
+    pnpm_workspace::PnpmWorkspaceScanner, process_compose::ProcessComposeScanner,
+    runtime_guards::RuntimeGuardsScanner, rust_conventions::RustConventionsScanner,
+    shell_script::ShellScriptScanner, skill_markdown::SkillMarkdownScanner,
+    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
+    vault_security::VaultSecurityScanner, ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -567,6 +567,94 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             ),
         };
         perform_scanner_issues("Shell", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("agents_md") {
+        debug!("Performing AGENTS.md validation analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.agents_md {
+            Some(c) => AgentsMdScanner::with_exclusions(
+                c.require_usage_protocol,
+                c.require_jit_index,
+                c.check_child_chain,
+                if c.attribution_patterns.is_empty() {
+                    project_lint_core::scanners::agents_md::DEFAULT_AI_ATTRIBUTION_PATTERNS
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                } else {
+                    c.attribution_patterns.clone()
+                },
+                excluded,
+            ),
+            None => AgentsMdScanner::with_exclusions(
+                false,
+                false,
+                true,
+                project_lint_core::scanners::agents_md::DEFAULT_AI_ATTRIBUTION_PATTERNS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                excluded,
+            ),
+        };
+        perform_scanner_issues("AgentsMD", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("path_hygiene") {
+        debug!("Performing path hygiene analysis (absolute paths, AI attribution)");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.path_hygiene {
+            Some(c) => PathHygieneScanner::with_exclusions(
+                c.check_absolute_home,
+                c.check_ai_attribution,
+                c.check_ai_signature,
+                if c.exempt_files.is_empty() {
+                    project_lint_core::scanners::path_hygiene::DEFAULT_EXEMPT_FILES
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                } else {
+                    c.exempt_files.clone()
+                },
+                if c.attribution_patterns.is_empty() {
+                    project_lint_core::scanners::path_hygiene::DEFAULT_AI_ATTRIBUTION_PATTERNS
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                } else {
+                    c.attribution_patterns.clone()
+                },
+                if c.signature_patterns.is_empty() {
+                    project_lint_core::scanners::path_hygiene::DEFAULT_AI_SIGNATURE_PATTERNS
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                } else {
+                    c.signature_patterns.clone()
+                },
+                excluded,
+            ),
+            None => PathHygieneScanner::with_exclusions(
+                true,
+                true,
+                true,
+                project_lint_core::scanners::path_hygiene::DEFAULT_EXEMPT_FILES
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                project_lint_core::scanners::path_hygiene::DEFAULT_AI_ATTRIBUTION_PATTERNS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                project_lint_core::scanners::path_hygiene::DEFAULT_AI_SIGNATURE_PATTERNS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                excluded,
+            ),
+        };
+        perform_scanner_issues("PathHyg", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)

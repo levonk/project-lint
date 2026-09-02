@@ -95,6 +95,10 @@ pub struct ScannerConfig {
     pub node_modules_integrity: Option<NodeModulesIntegrityScannerConfig>,
     #[serde(default)]
     pub shell_script: Option<ShellScriptScannerConfig>,
+    #[serde(default)]
+    pub agents_md: Option<AgentsMdScannerConfig>,
+    #[serde(default)]
+    pub path_hygiene: Option<PathHygieneScannerConfig>,
 }
 
 /// `[scanner_config.exclusion]` — configuration for the centralized exclusion
@@ -513,6 +517,93 @@ pub struct ShellScriptScannerConfig {
     /// should use `devbox run --`. Defaults to false.
     #[serde(default)]
     pub require_devbox_run: bool,
+}
+
+/// `[scanner_config.agents_md]` — configuration for the AGENTS.md scanner that
+/// validates the binding-contract structure of `AGENTS.md`, `CLAUDE.md`, and
+/// `AGENT.md` files: required sections, absolute paths, AI attribution, and
+/// child-chain references.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentsMdScannerConfig {
+    /// When true, require a "Usage Protocol" section (info-level).
+    /// Defaults to false.
+    #[serde(default)]
+    pub require_usage_protocol: bool,
+
+    /// When true, require a "JIT Index" or table of contents (info-level).
+    /// Defaults to false.
+    #[serde(default)]
+    pub require_jit_index: bool,
+
+    /// When true, verify that referenced child `AGENTS.md` files exist
+    /// (warning-level). Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_child_chain: bool,
+
+    /// AI attribution patterns to flag. When empty, uses the scanner's
+    /// built-in defaults.
+    #[serde(default)]
+    pub attribution_patterns: Vec<String>,
+}
+
+impl Default for AgentsMdScannerConfig {
+    fn default() -> Self {
+        Self {
+            require_usage_protocol: false,
+            require_jit_index: false,
+            check_child_chain: true,
+            attribution_patterns: Vec::new(),
+        }
+    }
+}
+
+/// `[scanner_config.path_hygiene]` — configuration for the cross-cutting
+/// path hygiene scanner that checks all committed text files for absolute
+/// home paths, AI attribution boilerplate, and AI signature comments.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathHygieneScannerConfig {
+    /// When true, flag absolute home paths (`/Users/...`, `/home/...`).
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_absolute_home: bool,
+
+    /// When true, flag AI tool attribution boilerplate. Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_ai_attribution: bool,
+
+    /// When true, flag AI signature comments in source headers. Defaults
+    /// to true.
+    #[serde(default = "default_true")]
+    pub check_ai_signature: bool,
+
+    /// File patterns exempt from the `no-absolute-home-paths` rule (e.g.
+    /// `.envrc`, `.gitignore`, `*.env`). When empty, uses the scanner's
+    /// built-in defaults.
+    #[serde(default)]
+    pub exempt_files: Vec<String>,
+
+    /// AI attribution patterns to flag. When empty, uses the scanner's
+    /// built-in defaults.
+    #[serde(default)]
+    pub attribution_patterns: Vec<String>,
+
+    /// AI signature comment patterns to flag. When empty, uses the
+    /// scanner's built-in defaults.
+    #[serde(default)]
+    pub signature_patterns: Vec<String>,
+}
+
+impl Default for PathHygieneScannerConfig {
+    fn default() -> Self {
+        Self {
+            check_absolute_home: true,
+            check_ai_attribution: true,
+            check_ai_signature: true,
+            exempt_files: Vec::new(),
+            attribution_patterns: Vec::new(),
+            signature_patterns: Vec::new(),
+        }
+    }
 }
 
 /// `[scanner_config.skill_markdown]` — configuration for the SKILL.md scanner

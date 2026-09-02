@@ -1,3 +1,4 @@
+pub mod agents_md;
 pub mod ast;
 pub mod ci_cd_parity;
 pub mod compose_lint;
@@ -23,6 +24,7 @@ pub mod node_modules_integrity;
 pub mod nx_config;
 pub mod nx_project;
 pub mod package_organization;
+pub mod path_hygiene;
 pub mod pnpm_workspace;
 pub mod process_compose;
 pub mod runtime_guards;
@@ -40,7 +42,8 @@ pub mod vault_security;
 /// typescript_monorepo, vault_security, skill_markdown, nix_flake,
 /// devbox_json, nix_shell, envrc_content, github_workflow, dependabot,
 /// justfile_content, makefile_content, process_compose, nx_config,
-/// nx_project, pnpm_workspace, node_modules_integrity, shell_script). Carries enough
+/// nx_project, pnpm_workspace, node_modules_integrity, shell_script,
+/// agents_md, path_hygiene). Carries enough
 /// context for the lint command to format a human-readable line and for tests
 /// to assert on severity/file/message.
 #[derive(Debug, Clone, PartialEq, Eq)]
