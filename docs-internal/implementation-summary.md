@@ -611,3 +611,81 @@ Five new scanners for CI/CD and build system configuration files:
 - 42 new unit tests across the 5 scanners (positive, negative, edge cases).
 - All 247 workspace tests pass (including pre-existing tests).
 - `devbox run -- just quality` passes (fmt + clippy + tests).
+
+## Monorepo Stack Scanners (2026-09-01)
+
+### Nx Config Scanner (`project-lint-core/src/scanners/nx_config.rs`)
+
+**Purpose**: Validate `nx.json` for Nx monorepo configuration — cache reuse,
+target defaults, and base branch.
+
+**Key Functions**:
+- `scan()` — parses `nx.json` as JSON, checks for `namedInputs`, `targetDefaults`, `defaultBase`, and cacheable operations
+
+**Validations**:
+- `nx-named-inputs` — `namedInputs` defined (warning)
+- `nx-target-defaults` — `targetDefaults` defined (warning)
+- `nx-default-base` — `defaultBase` defined (info)
+- `nx-cacheable-operations` — `cacheOperations` or `targetDefaults` with `cache: true` (info)
+- `nx-json-parse` — valid JSON (error)
+
+**Config**: `[scanner_config.nx_config]` with `require_named_inputs`, `require_target_defaults`
+
+**Tests**: 9 unit tests (silent when absent, missing fields, invalid JSON, config toggles, clean file, cache operations)
+
+### Nx Project Scanner (`project-lint-core/src/scanners/nx_project.rs`)
+
+**Purpose**: Validate Nx `project.json` files across a monorepo.
+
+**Key Functions**:
+- `scan()` — walks project for `project.json` files (excluding `node_modules/`), validates each
+
+**Validations**:
+- `nx-project-name-matches-dir` — `name` matches directory (warning)
+- `nx-project-has-targets` — at least one target defined (warning)
+- `nx-project-tags-present` — `tags` for dependency boundaries (info, configurable)
+- `nx-project-parse` — valid JSON (error)
+
+**Config**: `[scanner_config.nx_project]` with `require_name_matches_dir`, `require_tags`
+
+**Tests**: 10 unit tests (name match/mismatch, missing/empty targets, tags, node_modules skip, invalid JSON, clean file)
+
+### Pnpm Workspace Scanner (`project-lint-core/src/scanners/pnpm_workspace.rs`)
+
+**Purpose**: Validate `pnpm-workspace.yaml` content — packages field, glob validity, catalog mode.
+
+**Key Functions**:
+- `scan()` — parses `pnpm-workspace.yaml` as YAML, validates packages globs and catalog
+
+**Validations**:
+- `pnpm-workspace-packages` — `packages:` field present and non-empty (error)
+- `pnpm-workspace-globs-valid` — globs match at least one directory (warning)
+- `pnpm-workspace-catalog` — `catalog:` section when catalog mode enabled (warning, configurable)
+- `pnpm-workspace-no-node_modules-glob` — no `node_modules` in package globs (error)
+- `pnpm-workspace-parse` — valid YAML (error)
+
+**Config**: `[scanner_config.pnpm_workspace]` with `require_catalog`, `check_glob_matches`
+
+**Tests**: 10 unit tests (silent when absent, missing packages, clean workspace, glob matching, node_modules glob, catalog, invalid YAML, .yml extension, empty packages)
+
+### Node Modules Integrity Scanner (`project-lint-core/src/scanners/node_modules_integrity.rs`)
+
+**Purpose**: Detect corrupted pnpm `node_modules/` structures (e.g. when `npm install` is run in a pnpm workspace).
+
+**Key Functions**:
+- `scan()` — checks `node_modules/` structure when `pnpm-lock.yaml` exists
+- `check_pnpm_structure()` — verifies `.pnpm/` dir and symlink structure
+- `check_modules_yaml_file()` — validates `.modules.yaml` has `packageManager: pnpm`
+- `check_foreign_lockfiles()` — detects `package-lock.json` / `yarn.lock` in `node_modules/`
+- `check_package_manager_field()` — validates root `package.json` has `packageManager: pnpm@<version>`
+
+**Validations**:
+- `node-modules-pnpm-structure` — `.pnpm/` directory exists (error)
+- `node-modules-symlinks-valid` — top-level packages are symlinks (error)
+- `node-modules-modules-yaml` — `.modules.yaml` exists with `packageManager: pnpm` (error)
+- `node-modules-no-npm-lock` — no foreign lockfiles in `node_modules/` (error)
+- `node-modules-package-manager-field` — root `package.json` has `packageManager` field (warning)
+
+**Config**: `[scanner_config.node_modules_integrity]` with `check_symlink_structure`, `check_modules_yaml`, `check_no_foreign_lockfiles`, `require_package_manager_field`
+
+**Tests**: 13 unit tests (silent without pnpm-lock/node_modules, missing .pnpm, real dir vs symlink, .modules.yaml missing/wrong/pnpm, foreign lockfile, package manager field missing/wrong/correct, config disable all)

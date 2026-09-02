@@ -85,6 +85,14 @@ pub struct ScannerConfig {
     pub makefile_content: Option<MakefileContentConfig>,
     #[serde(default)]
     pub process_compose: Option<ProcessComposeConfig>,
+    #[serde(default)]
+    pub nx_config: Option<NxConfigScannerConfig>,
+    #[serde(default)]
+    pub nx_project: Option<NxProjectScannerConfig>,
+    #[serde(default)]
+    pub pnpm_workspace: Option<PnpmWorkspaceScannerConfig>,
+    #[serde(default)]
+    pub node_modules_integrity: Option<NodeModulesIntegrityScannerConfig>,
 }
 
 /// `[scanner_config.exclusion]` — configuration for the centralized exclusion
@@ -400,6 +408,77 @@ impl Default for ProcessComposeConfig {
             require_devbox: true,
         }
     }
+}
+
+/// `[scanner_config.nx_config]` — configuration for the nx.json scanner that
+/// validates Nx monorepo configuration for cache reuse and target defaults.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NxConfigScannerConfig {
+    /// When true, nx.json must define `namedInputs` for cache reuse.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_named_inputs: bool,
+
+    /// When true, nx.json must define `targetDefaults` for standard targets.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_target_defaults: bool,
+}
+
+/// `[scanner_config.nx_project]` — configuration for the Nx project.json
+/// scanner that validates individual project configuration files.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NxProjectScannerConfig {
+    /// When true, project.json `name` must match its directory name.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_name_matches_dir: bool,
+
+    /// When true, project.json should have `tags` for dependency boundaries.
+    /// Defaults to false.
+    #[serde(default)]
+    pub require_tags: bool,
+}
+
+/// `[scanner_config.pnpm_workspace]` — configuration for the pnpm-workspace.yaml
+/// scanner that validates workspace package globs and catalog mode.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PnpmWorkspaceScannerConfig {
+    /// When true, pnpm-workspace.yaml should define a `catalog:` section.
+    /// Defaults to false.
+    #[serde(default)]
+    pub require_catalog: bool,
+
+    /// When true, package globs are checked against actual directories.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_glob_matches: bool,
+}
+
+/// `[scanner_config.node_modules_integrity]` — configuration for the
+/// node_modules symlink integrity scanner that detects corrupted pnpm
+/// structures.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NodeModulesIntegrityScannerConfig {
+    /// When true, check that node_modules/.pnpm/ exists and top-level
+    /// packages are symlinks. Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_symlink_structure: bool,
+
+    /// When true, check node_modules/.modules.yaml for `packageManager: pnpm`.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_modules_yaml: bool,
+
+    /// When true, check that node_modules/ does not contain foreign lockfiles
+    /// (package-lock.json, yarn.lock). Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_no_foreign_lockfiles: bool,
+
+    /// When true, root package.json should have `packageManager` set to
+    /// `pnpm@<version>`. Defaults to true.
+    #[serde(default = "default_true")]
+    pub require_package_manager_field: bool,
 }
 
 /// `[scanner_config.skill_markdown]` — configuration for the SKILL.md scanner

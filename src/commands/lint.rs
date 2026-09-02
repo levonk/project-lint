@@ -23,11 +23,13 @@ use project_lint_core::scanners::{
     git_sync::GitSyncScanner, github_workflow::GithubWorkflowScanner,
     justfile_content::JustfileContentScanner, magic_numbers::MagicNumbersScanner,
     makefile_content::MakefileContentScanner, markdown_frontmatter::MarkdownFrontmatterScanner,
-    nix_flake::NixFlakeScanner, nix_shell::NixShellScanner, process_compose::ProcessComposeScanner,
-    runtime_guards::RuntimeGuardsScanner, rust_conventions::RustConventionsScanner,
-    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
-    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
-    ScannerIssue,
+    nix_flake::NixFlakeScanner, nix_shell::NixShellScanner,
+    node_modules_integrity::NodeModulesIntegrityScanner, nx_config::NxConfigScanner,
+    nx_project::NxProjectScanner, pnpm_workspace::PnpmWorkspaceScanner,
+    process_compose::ProcessComposeScanner, runtime_guards::RuntimeGuardsScanner,
+    rust_conventions::RustConventionsScanner, skill_markdown::SkillMarkdownScanner,
+    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
+    vault_security::VaultSecurityScanner, ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -479,6 +481,54 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => ProcessComposeScanner::with_exclusions(true, true, excluded),
         };
         perform_scanner_issues("ProcCompose", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("nx_config") {
+        debug!("Performing Nx config (nx.json) analysis");
+        let scanner = match &config.scanner_config.nx_config {
+            Some(c) => {
+                NxConfigScanner::with_config(c.require_named_inputs, c.require_target_defaults)
+            }
+            None => NxConfigScanner::new(),
+        };
+        perform_scanner_issues("NxConfig", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("nx_project") {
+        debug!("Performing Nx project (project.json) analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.nx_project {
+            Some(c) => NxProjectScanner::with_exclusions(
+                c.require_tags,
+                c.require_name_matches_dir,
+                excluded,
+            ),
+            None => NxProjectScanner::with_exclusions(false, true, excluded),
+        };
+        perform_scanner_issues("NxProject", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("pnpm_workspace") {
+        debug!("Performing pnpm-workspace.yaml analysis");
+        let scanner = match &config.scanner_config.pnpm_workspace {
+            Some(c) => PnpmWorkspaceScanner::with_config(c.require_catalog, c.check_glob_matches),
+            None => PnpmWorkspaceScanner::new(),
+        };
+        perform_scanner_issues("PnpmWs", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("node_modules_integrity") {
+        debug!("Performing node_modules symlink integrity analysis");
+        let scanner = match &config.scanner_config.node_modules_integrity {
+            Some(c) => NodeModulesIntegrityScanner::with_config(
+                c.check_symlink_structure,
+                c.check_modules_yaml,
+                c.check_no_foreign_lockfiles,
+                c.require_package_manager_field,
+            ),
+            None => NodeModulesIntegrityScanner::new(),
+        };
+        perform_scanner_issues("NodeMods", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)
