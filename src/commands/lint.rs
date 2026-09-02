@@ -17,14 +17,17 @@ use project_lint_core::scanners::security::SecurityScanner;
 use project_lint_core::scanners::typescript::TypeScriptScanner;
 use project_lint_core::scanners::{
     ci_cd_parity::CiCdParityScanner, compose_lint::ComposeLintScanner,
-    config_validation::ConfigValidationScanner, dev_environment::DevEnvironmentScanner,
-    devbox_json::DevboxJsonScanner, dockerfile_lint::DockerfileLintScanner,
-    envrc_content::EnvrcContentScanner, git_sync::GitSyncScanner,
-    magic_numbers::MagicNumbersScanner, markdown_frontmatter::MarkdownFrontmatterScanner,
-    nix_flake::NixFlakeScanner, nix_shell::NixShellScanner, runtime_guards::RuntimeGuardsScanner,
-    rust_conventions::RustConventionsScanner, skill_markdown::SkillMarkdownScanner,
-    submodule_integrity::SubmoduleIntegrityScanner, typescript_monorepo::TypeScriptMonorepoScanner,
-    vault_security::VaultSecurityScanner, ScannerIssue,
+    config_validation::ConfigValidationScanner, dependabot::DependabotScanner,
+    dev_environment::DevEnvironmentScanner, devbox_json::DevboxJsonScanner,
+    dockerfile_lint::DockerfileLintScanner, envrc_content::EnvrcContentScanner,
+    git_sync::GitSyncScanner, github_workflow::GithubWorkflowScanner,
+    justfile_content::JustfileContentScanner, magic_numbers::MagicNumbersScanner,
+    makefile_content::MakefileContentScanner, markdown_frontmatter::MarkdownFrontmatterScanner,
+    nix_flake::NixFlakeScanner, nix_shell::NixShellScanner, process_compose::ProcessComposeScanner,
+    runtime_guards::RuntimeGuardsScanner, rust_conventions::RustConventionsScanner,
+    skill_markdown::SkillMarkdownScanner, submodule_integrity::SubmoduleIntegrityScanner,
+    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
+    ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -400,6 +403,82 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             None => EnvrcContentScanner::with_exclusions(true, true, Vec::new(), excluded),
         };
         perform_scanner_issues("Envrc", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("github_workflow") {
+        debug!("Performing GitHub Actions workflow analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.github_workflow {
+            Some(c) => GithubWorkflowScanner::with_exclusions(
+                c.require_permissions,
+                c.require_pinned_actions,
+                c.require_timeout,
+                c.require_devbox,
+                c.forbid_pull_request_target,
+                excluded,
+            ),
+            None => GithubWorkflowScanner::with_exclusions(true, true, true, true, true, excluded),
+        };
+        perform_scanner_issues("GHWorkflow", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("dependabot") {
+        debug!("Performing dependabot analysis");
+        let scanner = match &config.scanner_config.dependabot {
+            Some(c) => {
+                DependabotScanner::with_config(c.check_ecosystem_coverage, c.require_group_config)
+            }
+            None => DependabotScanner::new(),
+        };
+        perform_scanner_issues("Dependabot", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("justfile_content") {
+        debug!("Performing justfile content analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.justfile_content {
+            Some(c) => JustfileContentScanner::with_exclusions(
+                c.require_devbox_wrapper,
+                c.forbidden_commands.clone(),
+                c.required_targets.clone(),
+                excluded,
+            ),
+            None => JustfileContentScanner::with_exclusions(
+                true,
+                vec!["npx".to_string(), "bunx".to_string(), "yarn".to_string()],
+                vec![
+                    "quality".to_string(),
+                    "quality-full".to_string(),
+                    "ci".to_string(),
+                ],
+                excluded,
+            ),
+        };
+        perform_scanner_issues("Justfile", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("makefile_content") {
+        debug!("Performing Makefile content analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.makefile_content {
+            Some(c) => MakefileContentScanner::with_exclusions(c.require_just_delegation, excluded),
+            None => MakefileContentScanner::with_exclusions(false, excluded),
+        };
+        perform_scanner_issues("Makefile", &scanner.scan(project_path)?, &mut issues);
+    }
+
+    if config.is_check_enabled("process_compose") {
+        debug!("Performing process-compose analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.process_compose {
+            Some(c) => ProcessComposeScanner::with_exclusions(
+                c.require_health_check,
+                c.require_devbox,
+                excluded,
+            ),
+            None => ProcessComposeScanner::with_exclusions(true, true, excluded),
+        };
+        perform_scanner_issues("ProcCompose", &scanner.scan(project_path)?, &mut issues);
     }
 
     // Legacy checks (for backward compatibility)

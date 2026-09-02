@@ -555,3 +555,59 @@ The implementation provides:
 - **Worktree isolation enforcement** (configurable protected_branches, pre-commit/pre-push gates, PreToolUse/PostToolUse/Stop/SubagentStop hooks, Claude settings.json install)
 
 All modules follow project-lint's architecture patterns and are ready for production use.
+
+---
+
+## Build/CI Stack Scanners (2026-09-01)
+
+**PRD**: [docs-internal/requirements/20260901-build-ci-stack.md](requirements/20260901-build-ci-stack.md)
+
+### Shipped
+
+Five new scanners for CI/CD and build system configuration files:
+
+- **`github_workflow`** (`project-lint-core/src/scanners/github_workflow.rs`):
+  Validates `.github/workflows/*.yml` — explicit permissions block, minimal
+  token scope (`contents: read`), no `pull_request_target`, SHA-pinned
+  actions, no secret env injection, no `sudo`, valid `runs-on`,
+  `concurrency`, `timeout-minutes`, and devbox usage. Configurable via
+  `[scanner_config.github_workflow]`. Gated by `github_workflow` check name.
+  11 unit tests.
+
+- **`dependabot`** (`project-lint-core/src/scanners/dependabot.rs`):
+  Validates `.github/dependabot.yml` — ecosystem coverage, schedule
+  intervals, group config, assignees/reviewers, and `github-actions`
+  ecosystem presence when workflows exist. Configurable via
+  `[scanner_config.dependabot]`. Gated by `dependabot` check name.
+  8 unit tests.
+
+- **`justfile_content`** (`project-lint-core/src/scanners/justfile_content.rs`):
+  Validates `justfile` / `Justfile` content — required targets (`quality`,
+  `quality-full`, `ci`, `bootstrap`), devbox wrapper usage, no absolute
+  paths, no forbidden commands (`npx`, `bunx`, `yarn`), and no raw `cargo`
+  calls in devbox projects. Configurable via
+  `[scanner_config.justfile_content]`. Gated by `justfile_content` check
+  name. 8 unit tests.
+
+- **`makefile_content`** (`project-lint-core/src/scanners/makefile_content.rs`):
+  Validates `Makefile` content — flags Makefile presence (should migrate to
+  justfile), no absolute paths, no `cd /absolute`, and just-delegation
+  pattern. Configurable via `[scanner_config.makefile_content]`. Gated by
+  `makefile_content` check name. 7 unit tests.
+
+- **`process_compose`** (`project-lint-core/src/scanners/process_compose.rs`):
+  Validates `process-compose.yaml` / `.yml` — valid `command` fields,
+  health checks, restart policies, no absolute paths, and devbox usage.
+  Configurable via `[scanner_config.process_compose]`. Gated by
+  `process_compose` check name. 8 unit tests.
+
+### Dependencies Added
+
+- `serde_yaml = "0.9"` — for parsing workflow YAML, dependabot YAML,
+  process-compose YAML.
+
+### Tests
+
+- 42 new unit tests across the 5 scanners (positive, negative, edge cases).
+- All 247 workspace tests pass (including pre-existing tests).
+- `devbox run -- just quality` passes (fmt + clippy + tests).
