@@ -174,25 +174,36 @@ impl DependabotScanner {
     fn detect_ecosystems(&self, root: &Path) -> Vec<&'static str> {
         let mut ecosystems: Vec<&'static str> = Vec::new();
 
+        // github-actions is a Dependabot-specific ecosystem not detected by apmw-core
         if root.join(".github").join("workflows").exists() {
             ecosystems.push("github-actions");
         }
-        if root.join("Cargo.toml").exists() {
-            ecosystems.push("cargo");
-        }
-        if root.join("package.json").exists() {
-            ecosystems.push("npm");
-        }
-        if root.join("pyproject.toml").exists() || root.join("requirements.txt").exists() {
-            ecosystems.push("pip");
-        }
+
+        // docker is a Dependabot-specific ecosystem not detected by apmw-core
         if root.join("Dockerfile").exists() {
             ecosystems.push("docker");
         }
 
+        // Use apmw-core for language ecosystem detection
+        let engine = apmw_core::detect::DetectionEngine::new();
+        match engine.detect(root) {
+            Ok(results) => {
+                for result in &results {
+                    if let Some(dep_eco) = ecosystem_to_dependabot(&result.ecosystem) {
+                        if !ecosystems.contains(&dep_eco) {
+                            ecosystems.push(dep_eco);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("apmw-core detection failed for {}: {}", root.display(), e);
+            }
+        }
+
+        // Fallback: only github-actions is universal. Never default to cargo.
         if ecosystems.is_empty() {
             ecosystems.push("github-actions");
-            ecosystems.push("cargo");
         }
 
         ecosystems
@@ -240,6 +251,24 @@ struct DependabotEntry {
 struct DependabotSchedule {
     #[serde(default)]
     interval: String,
+}
+
+/// Map an apmw-core ecosystem string to a Dependabot package-ecosystem name.
+/// Returns None for ecosystems with no Dependabot equivalent (e.g. polyglot/bazel).
+fn ecosystem_to_dependabot(ecosystem: &str) -> Option<&'static str> {
+    match ecosystem {
+        "rust" => Some("cargo"),
+        "node" => Some("npm"),
+        "python" => Some("pip"),
+        "go" => Some("gomod"),
+        "ruby" => Some("bundler"),
+        "php" => Some("composer"),
+        "jvm" => Some("maven"),
+        "swift" => Some("swift"),
+        "dotnet" => Some("nuget"),
+        "flutter" => Some("pub"),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -396,7 +425,7 @@ mod tests {
         std::fs::write(dir.path().join("Cargo.toml"), "[package]\nname = \"x\"\n")?;
         std::fs::write(dir.path().join("package.json"), "{}")?;
         std::fs::write(dir.path().join("Dockerfile"), "FROM scratch\n")?;
-        std::fs::write(dir.path().join("pyproject.toml"), "[project]\n")?;
+        std::fs::write(dir.path().join("requirements.txt"), "requests==2.31.0\n")?;
 
         let scanner = DependabotScanner::new();
         let issues = scanner.scan(&dir.path().to_string_lossy())?;
@@ -420,8 +449,89 @@ mod tests {
         scanner.apply_fixes(&issues, false)?;
         let content = std::fs::read_to_string(dir.path().join(".github").join("dependabot.yml"))?;
         assert!(content.contains("github-actions"));
-        assert!(content.contains("cargo"));
+        assert!(
+            !content.contains("cargo"),
+            "fallback must not add cargo for non-Rust projects, got: {}",
+            content
+        );
         Ok(())
+    }
+
+    #[test]
+    fn detect_ecosystems_cargo_for_rust_project() -> Result<()> {
+        let dir = TempDir::new()?;
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\n",
+        )?;
+        let scanner = DependabotScanner::new();
+        let ecosystems = scanner.detect_ecosystems(dir.path());
+        assert!(
+            ecosystems.contains(&"cargo"),
+            "expected cargo ecosystem, got: {:?}",
+            ecosystems
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn detect_ecosystems_npm_for_node_project() -> Result<()> {
+        let dir = TempDir::new()?;
+        std::fs::write(dir.path().join("package.json"), "{ \"name\": \"x\" }\n")?;
+        let scanner = DependabotScanner::new();
+        let ecosystems = scanner.detect_ecosystems(dir.path());
+        assert!(
+            ecosystems.contains(&"npm"),
+            "expected npm ecosystem, got: {:?}",
+            ecosystems
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn detect_ecosystems_fallback_only_github_actions() -> Result<()> {
+        let dir = TempDir::new()?;
+        std::fs::write(dir.path().join("README.md"), "# empty\n")?;
+        let scanner = DependabotScanner::new();
+        let ecosystems = scanner.detect_ecosystems(dir.path());
+        assert_eq!(ecosystems, vec!["github-actions"]);
+        Ok(())
+    }
+
+    #[test]
+    fn detect_ecosystems_cargo_and_npm_for_polyglot() -> Result<()> {
+        let dir = TempDir::new()?;
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\n",
+        )?;
+        std::fs::write(dir.path().join("package.json"), "{ \"name\": \"x\" }\n")?;
+        let scanner = DependabotScanner::new();
+        let ecosystems = scanner.detect_ecosystems(dir.path());
+        assert!(ecosystems.contains(&"cargo"));
+        assert!(ecosystems.contains(&"npm"));
+        Ok(())
+    }
+
+    #[test]
+    fn ecosystem_to_dependabot_maps_all_known_ecosystems() {
+        assert_eq!(ecosystem_to_dependabot("rust"), Some("cargo"));
+        assert_eq!(ecosystem_to_dependabot("node"), Some("npm"));
+        assert_eq!(ecosystem_to_dependabot("python"), Some("pip"));
+        assert_eq!(ecosystem_to_dependabot("go"), Some("gomod"));
+        assert_eq!(ecosystem_to_dependabot("ruby"), Some("bundler"));
+        assert_eq!(ecosystem_to_dependabot("php"), Some("composer"));
+        assert_eq!(ecosystem_to_dependabot("jvm"), Some("maven"));
+        assert_eq!(ecosystem_to_dependabot("swift"), Some("swift"));
+        assert_eq!(ecosystem_to_dependabot("dotnet"), Some("nuget"));
+        assert_eq!(ecosystem_to_dependabot("flutter"), Some("pub"));
+    }
+
+    #[test]
+    fn ecosystem_to_dependabot_returns_none_for_polyglot() {
+        assert_eq!(ecosystem_to_dependabot("polyglot"), None);
+        assert_eq!(ecosystem_to_dependabot("unknown"), None);
+        assert_eq!(ecosystem_to_dependabot(""), None);
     }
 
     #[test]
