@@ -121,6 +121,8 @@ pub struct ScannerConfig {
     pub protobuf_lint: Option<ProtobufLintConfig>,
     #[serde(default)]
     pub prisma_schema: Option<PrismaSchemaConfig>,
+    #[serde(default)]
+    pub yamllint_config: Option<YamllintConfigScannerConfig>,
 }
 
 /// `[scanner_config.python_config]` — configuration for the Python config
@@ -308,6 +310,16 @@ impl Default for PrismaSchemaConfig {
             require_model_timestamps: false,
         }
     }
+}
+
+/// `[scanner_config.yamllint_config]` — configuration for the yamllint config
+/// scanner that checks for a `.yamllint` file in the project root.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct YamllintConfigScannerConfig {
+    /// When true, emit an info-level issue if `.yamllint` lacks an `extends:`
+    /// field. Defaults to false.
+    #[serde(default)]
+    pub require_extends: bool,
 }
 
 /// `[scanner_config.exclusion]` — configuration for the centralized exclusion

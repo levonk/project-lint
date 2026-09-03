@@ -47,6 +47,7 @@ pub mod terraform_lint;
 pub mod typescript;
 pub mod typescript_monorepo;
 pub mod vault_security;
+pub mod yamllint_config;
 
 /// Generic issue emitted by the project-level scanners (rust_conventions,
 /// dev_environment, ci_cd_parity, dockerfile_lint, compose_lint,
