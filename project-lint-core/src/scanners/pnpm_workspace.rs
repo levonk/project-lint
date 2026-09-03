@@ -2,7 +2,7 @@
 //! field presence, glob validity, catalog mode, and no `node_modules` in globs.
 
 use crate::scanners::ScannerIssue;
-use crate::utils::Result;
+use crate::utils::{detect_yaml_secrets, Result};
 use std::path::Path;
 use tracing::debug;
 
@@ -70,6 +70,11 @@ impl PnpmWorkspaceScanner {
                 return Ok(issues);
             }
         };
+
+        for (line, msg) in detect_yaml_secrets(&content) {
+            issues
+                .push(ScannerIssue::new("yaml-hardcoded-secret", "error", &rel, msg).at_line(line));
+        }
 
         let packages = parsed.get("packages").and_then(|v| v.as_sequence());
 
@@ -329,6 +334,22 @@ mod tests {
         let scanner = PnpmWorkspaceScanner::new();
         let issues = scanner.scan(&dir.path().to_string_lossy())?;
         assert!(issues.iter().any(|i| i.rule == "pnpm-workspace-packages"));
+        Ok(())
+    }
+
+    #[test]
+    fn flags_hardcoded_secret_in_workspace() -> Result<()> {
+        let dir = TempDir::new()?;
+        std::fs::create_dir_all(dir.path().join("packages").join("foo"))?;
+        std::fs::write(
+            dir.path().join("pnpm-workspace.yaml"),
+            "packages:\n  - 'packages/*'\napi_token: abc123\n",
+        )?;
+        let scanner = PnpmWorkspaceScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "yaml-hardcoded-secret" && i.severity == "error"));
         Ok(())
     }
 }
