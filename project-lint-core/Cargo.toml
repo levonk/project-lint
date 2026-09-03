@@ -54,6 +54,9 @@ tree-sitter-toml = "0.20"
 # Dependency version checking
 semver = "1.0"
 
+# Ecosystem detection
+apmw-core = "0.1"
+
 # Content hashing for duplicate-binary detection
 sha2 = "0.10"
 
