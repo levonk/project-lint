@@ -123,7 +123,8 @@ impl SkillMarkdownScanner {
         // Validate required frontmatter fields.
         if let Err(field_errs) = validate_required_frontmatter_fields(&content) {
             for e in field_errs {
-                issues.push(ScannerIssue::new("skill-frontmatter", "error", rel, e));
+                let rule = skill_frontmatter_rule_for(&e);
+                issues.push(ScannerIssue::new(rule, "error", rel, e));
             }
         }
 
@@ -260,6 +261,10 @@ fn validate_required_frontmatter_fields(content: &str) -> std::result::Result<()
                     has_description = true;
                     if value.is_empty() {
                         errs.push("frontmatter field 'description' is empty".to_string());
+                    } else if has_unquoted_colon_space(value) {
+                        errs.push(format!(
+                            "frontmatter field 'description' has an unquoted colon-space sequence (\"{value}\") — YAML interprets this as a nested mapping; quote the value, e.g. description: \"{value}\""
+                        ));
                     }
                 }
                 "version" => {
@@ -287,6 +292,29 @@ fn validate_required_frontmatter_fields(content: &str) -> std::result::Result<()
         Ok(())
     } else {
         Err(errs)
+    }
+}
+
+/// Detect a `: ` (colon-space) sequence in an unquoted YAML scalar value.
+/// Quoted values (starting with `"` or `'`) are safe — YAML treats their
+/// content as a literal string. Returns `true` when the raw value would be
+/// misinterpreted as a nested mapping by a real YAML parser.
+fn has_unquoted_colon_space(value: &str) -> bool {
+    if value.starts_with('"') || value.starts_with('\'') {
+        return false;
+    }
+    value.contains(": ")
+}
+
+/// Map a `validate_required_frontmatter_fields` error message to its scanner
+/// rule name. The unquoted-colon check gets its own rule so consumers can
+/// filter on the specific bug class; all other frontmatter errors map to the
+/// generic `skill-frontmatter` rule.
+fn skill_frontmatter_rule_for(msg: &str) -> &'static str {
+    if msg.contains("unquoted colon-space") {
+        "skill-frontmatter-unquoted-colon"
+    } else {
+        "skill-frontmatter"
     }
 }
 
@@ -443,5 +471,109 @@ mod tests {
     fn default_max_body_lines_is_80() {
         assert_eq!(DEFAULT_MAX_BODY_LINES, 80);
         assert_eq!(SkillMarkdownScanner::new().max_body_lines, 80);
+    }
+
+    #[test]
+    fn flags_unquoted_colon_in_description() -> Result<()> {
+        let dir = TempDir::new()?;
+        let body = "---\nname: my-skill\ndescription: For skills: create from scratch\nversion: 1.0.0\n---\n# Body\n";
+        write_skill(&dir.path(), body, true);
+        let scanner = SkillMarkdownScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues.iter().any(|i| {
+            i.rule == "skill-frontmatter-unquoted-colon"
+                && i.severity == "error"
+                && i.message.contains("For skills: create from scratch")
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn quoted_description_with_colon_passes() -> Result<()> {
+        let dir = TempDir::new()?;
+        let body = "---\nname: my-skill\ndescription: \"For skills: create from scratch\"\nversion: 1.0.0\n---\n# Body\n";
+        write_skill(&dir.path(), body, true);
+        let scanner = SkillMarkdownScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(!issues
+            .iter()
+            .any(|i| i.rule == "skill-frontmatter-unquoted-colon"));
+        Ok(())
+    }
+
+    #[test]
+    fn single_quoted_description_with_colon_passes() -> Result<()> {
+        let dir = TempDir::new()?;
+        let body = "---\nname: my-skill\ndescription: 'For skills: create from scratch'\nversion: 1.0.0\n---\n# Body\n";
+        write_skill(&dir.path(), body, true);
+        let scanner = SkillMarkdownScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(!issues
+            .iter()
+            .any(|i| i.rule == "skill-frontmatter-unquoted-colon"));
+        Ok(())
+    }
+
+    #[test]
+    fn description_without_colon_passes() -> Result<()> {
+        let dir = TempDir::new()?;
+        let body = "---\nname: my-skill\ndescription: A simple skill with no colon\nversion: 1.0.0\n---\n# Body\n";
+        write_skill(&dir.path(), body, true);
+        let scanner = SkillMarkdownScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(!issues
+            .iter()
+            .any(|i| i.rule == "skill-frontmatter-unquoted-colon"));
+        Ok(())
+    }
+
+    #[test]
+    fn description_with_colon_no_space_passes() -> Result<()> {
+        let dir = TempDir::new()?;
+        // "foo:bar" has a colon but no space after — YAML treats this as a
+        // plain scalar, not a mapping.
+        let body = "---\nname: my-skill\ndescription: foo:bar baz\nversion: 1.0.0\n---\n# Body\n";
+        write_skill(&dir.path(), body, true);
+        let scanner = SkillMarkdownScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(!issues
+            .iter()
+            .any(|i| i.rule == "skill-frontmatter-unquoted-colon"));
+        Ok(())
+    }
+
+    #[test]
+    fn empty_description_does_not_trigger_colon_check() -> Result<()> {
+        let dir = TempDir::new()?;
+        let body = "---\nname: my-skill\ndescription:\nversion: 1.0.0\n---\n# Body\n";
+        write_skill(&dir.path(), body, true);
+        let scanner = SkillMarkdownScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(!issues
+            .iter()
+            .any(|i| i.rule == "skill-frontmatter-unquoted-colon"));
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "skill-frontmatter" && i.message.contains("empty")));
+        Ok(())
+    }
+
+    #[test]
+    fn has_unquoted_colon_space_detects_colon_space() {
+        assert!(has_unquoted_colon_space("For skills: create"));
+        assert!(has_unquoted_colon_space("a: b: c"));
+    }
+
+    #[test]
+    fn has_unquoted_colon_space_ignores_quoted() {
+        assert!(!has_unquoted_colon_space("\"For skills: create\""));
+        assert!(!has_unquoted_colon_space("'For skills: create'"));
+    }
+
+    #[test]
+    fn has_unquoted_colon_space_ignores_colon_without_space() {
+        assert!(!has_unquoted_colon_space("foo:bar"));
+        assert!(!has_unquoted_colon_space(""));
+        assert!(!has_unquoted_colon_space("no colon here"));
     }
 }
