@@ -39,6 +39,12 @@ impl DependabotScanner {
         } else if dependabot_alt.exists() {
             dependabot_alt
         } else {
+            issues.push(ScannerIssue::new(
+                "dependabot-missing",
+                "warning",
+                &dependabot_path.to_string_lossy(),
+                "Project has no .github/dependabot.yml — dependency updates are not configured. Run with --fix to create one.",
+            ));
             return Ok(issues);
         };
 
@@ -135,6 +141,72 @@ impl DependabotScanner {
         }
 
         Ok(issues)
+    }
+
+    pub fn apply_fixes(&self, issues: &[ScannerIssue], dry_run: bool) -> Result<usize> {
+        let missing = issues.iter().find(|i| i.rule == "dependabot-missing");
+        let Some(missing) = missing else {
+            return Ok(0);
+        };
+
+        if dry_run {
+            debug!("dry-run: would create {}", missing.file);
+            return Ok(0);
+        }
+
+        let dest = Path::new(&missing.file);
+        let root = dest
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap_or(Path::new("."));
+        let ecosystems = self.detect_ecosystems(root);
+        let content = self.generate_config(&ecosystems);
+
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(dest, content)?;
+        debug!("created {}", dest.display());
+
+        Ok(1)
+    }
+
+    fn detect_ecosystems(&self, root: &Path) -> Vec<&'static str> {
+        let mut ecosystems: Vec<&'static str> = Vec::new();
+
+        if root.join(".github").join("workflows").exists() {
+            ecosystems.push("github-actions");
+        }
+        if root.join("Cargo.toml").exists() {
+            ecosystems.push("cargo");
+        }
+        if root.join("package.json").exists() {
+            ecosystems.push("npm");
+        }
+        if root.join("pyproject.toml").exists() || root.join("requirements.txt").exists() {
+            ecosystems.push("pip");
+        }
+        if root.join("Dockerfile").exists() {
+            ecosystems.push("docker");
+        }
+
+        if ecosystems.is_empty() {
+            ecosystems.push("github-actions");
+            ecosystems.push("cargo");
+        }
+
+        ecosystems
+    }
+
+    fn generate_config(&self, ecosystems: &[&str]) -> String {
+        let mut out = String::from("version: 2\nupdates:\n");
+        for ecosystem in ecosystems {
+            out.push_str(&format!(
+                "  - package-ecosystem: \"{}\"\n    directory: \"/\"\n    schedule:\n      interval: \"weekly\"\n",
+                ecosystem
+            ));
+        }
+        out
     }
 }
 
@@ -274,11 +346,81 @@ mod tests {
     }
 
     #[test]
-    fn silent_when_no_dependabot_file() -> Result<()> {
+    fn missing_file_emits_warning() -> Result<()> {
         let dir = TempDir::new()?;
         std::fs::write(dir.path().join("README.md"), "# hello\n")?;
         let scanner = DependabotScanner::new();
-        assert!(scanner.scan(&dir.path().to_string_lossy())?.is_empty());
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "dependabot-missing" && i.severity == "warning"));
+        Ok(())
+    }
+
+    #[test]
+    fn apply_fixes_creates_dependabot_file() -> Result<()> {
+        let dir = TempDir::new()?;
+        std::fs::write(dir.path().join("Cargo.toml"), "[package]\nname = \"x\"\n")?;
+        let scanner = DependabotScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        let fixed = scanner.apply_fixes(&issues, false)?;
+        assert_eq!(fixed, 1);
+        let created = dir.path().join(".github").join("dependabot.yml");
+        assert!(created.exists());
+        let content = std::fs::read_to_string(&created)?;
+        assert!(content.contains("version: 2"));
+        assert!(content.contains("cargo"));
+        Ok(())
+    }
+
+    #[test]
+    fn dry_run_does_not_create_file() -> Result<()> {
+        let dir = TempDir::new()?;
+        std::fs::write(dir.path().join("Cargo.toml"), "[package]\nname = \"x\"\n")?;
+        let scanner = DependabotScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        let fixed = scanner.apply_fixes(&issues, true)?;
+        assert_eq!(fixed, 0);
+        assert!(!dir.path().join(".github").join("dependabot.yml").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn generated_config_has_correct_ecosystems() -> Result<()> {
+        let dir = TempDir::new()?;
+        std::fs::create_dir_all(dir.path().join(".github").join("workflows"))?;
+        std::fs::write(
+            dir.path().join(".github").join("workflows").join("ci.yml"),
+            "name: CI\n",
+        )?;
+        std::fs::write(dir.path().join("Cargo.toml"), "[package]\nname = \"x\"\n")?;
+        std::fs::write(dir.path().join("package.json"), "{}")?;
+        std::fs::write(dir.path().join("Dockerfile"), "FROM scratch\n")?;
+        std::fs::write(dir.path().join("pyproject.toml"), "[project]\n")?;
+
+        let scanner = DependabotScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        scanner.apply_fixes(&issues, false)?;
+
+        let content = std::fs::read_to_string(dir.path().join(".github").join("dependabot.yml"))?;
+        assert!(content.contains("github-actions"));
+        assert!(content.contains("cargo"));
+        assert!(content.contains("npm"));
+        assert!(content.contains("pip"));
+        assert!(content.contains("docker"));
+        Ok(())
+    }
+
+    #[test]
+    fn generated_config_defaults_when_no_ecosystems_detected() -> Result<()> {
+        let dir = TempDir::new()?;
+        std::fs::write(dir.path().join("README.md"), "# empty project\n")?;
+        let scanner = DependabotScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        scanner.apply_fixes(&issues, false)?;
+        let content = std::fs::read_to_string(dir.path().join(".github").join("dependabot.yml"))?;
+        assert!(content.contains("github-actions"));
+        assert!(content.contains("cargo"));
         Ok(())
     }
 

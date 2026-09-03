@@ -36,7 +36,7 @@ use project_lint_core::scanners::{
     shell_script::ShellScriptScanner, skill_markdown::SkillMarkdownScanner,
     sql_migration::SqlMigrationScanner, submodule_integrity::SubmoduleIntegrityScanner,
     terraform_lint::TerraformLintScanner, typescript_monorepo::TypeScriptMonorepoScanner,
-    vault_security::VaultSecurityScanner, ScannerIssue,
+    vault_security::VaultSecurityScanner, yamllint_config::YamllintConfigScanner, ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -592,7 +592,16 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
             }
             None => DependabotScanner::new(),
         };
-        perform_scanner_issues("Dependabot", &scanner.scan(project_path)?, &mut issues);
+        perform_dependabot_analysis(project_path, &mut issues, apply_fixes, dry_run, scanner)?;
+    }
+
+    if config.is_check_enabled("yamllint_config") {
+        debug!("Performing yamllint config analysis");
+        let scanner = match &config.scanner_config.yamllint_config {
+            Some(c) => YamllintConfigScanner::with_config(c.require_extends),
+            None => YamllintConfigScanner::new(),
+        };
+        perform_yamllint_config_analysis(project_path, &mut issues, apply_fixes, dry_run, scanner)?;
     }
 
     if config.is_check_enabled("justfile_content") {
@@ -966,6 +975,74 @@ fn build_exclusions_from_config(config: &Config) -> Vec<String> {
         Some(c) => build_exclusions(&c.extra_excludes, c.allow_vendor),
         None => build_exclusions(&[], false),
     }
+}
+
+fn perform_dependabot_analysis(
+    project_path: &str,
+    issues: &mut Vec<String>,
+    apply_fixes: bool,
+    dry_run: bool,
+    scanner: DependabotScanner,
+) -> Result<()> {
+    let detected_issues = scanner.scan(project_path)?;
+    perform_scanner_issues("Dependabot", &detected_issues, issues);
+
+    if (apply_fixes || dry_run)
+        && detected_issues
+            .iter()
+            .any(|i| i.rule == "dependabot-missing")
+    {
+        match scanner.apply_fixes(&detected_issues, dry_run) {
+            Ok(fixes) => {
+                if fixes > 0 {
+                    if dry_run {
+                        info!("📋 Would create {} dependabot config file(s)", fixes);
+                    } else {
+                        info!("✅ Created {} dependabot config file(s)", fixes);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to apply dependabot fixes: {}", e);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn perform_yamllint_config_analysis(
+    project_path: &str,
+    issues: &mut Vec<String>,
+    apply_fixes: bool,
+    dry_run: bool,
+    scanner: YamllintConfigScanner,
+) -> Result<()> {
+    let detected_issues = scanner.scan(project_path)?;
+    perform_scanner_issues("Yamllint", &detected_issues, issues);
+
+    if (apply_fixes || dry_run)
+        && detected_issues
+            .iter()
+            .any(|i| i.rule == "yamllint-missing-config")
+    {
+        match scanner.apply_fixes(&detected_issues, dry_run) {
+            Ok(fixes) => {
+                if fixes > 0 {
+                    if dry_run {
+                        info!("📋 Would create {} yamllint config file(s)", fixes);
+                    } else {
+                        info!("✅ Created {} yamllint config file(s)", fixes);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to apply yamllint config fixes: {}", e);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Format and append a batch of [`ScannerIssue`]s to the user-facing issue list.

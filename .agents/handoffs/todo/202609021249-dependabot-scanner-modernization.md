@@ -259,3 +259,11 @@ Every task below is executed via the `execute-upsert` skill.
 
 - **skills-src handoff**: `202609021249-add-dependabot-config-and-update-project-adopter.md` — adds dependabot.yml to skills-src and updates project-adopter to generate modern config
 - **levonk-base-boilerplate handoff**: `202609021249-add-dependabot-template-to-boilerplate.md` — adds dependabot.yml template to Copier templates
+
+### Detection Source of Truth
+
+The `dependabot-missing-ecosystem` check needs to know which manifests map to which Dependabot ecosystems. Currently this handoff hardcodes that mapping. Once `apmw-core` is published to crates.io, the dependabot scanner should use `apmw_core::detect` + `apmw_core::ecosystem` instead of maintaining its own mapping. See:
+
+- **apmw-core adoption handoff**: `202609021636-adopt-apmw-core-as-detection-source.md` — replaces hardcoded manifest detection across all project-lint scanners with `apmw-core` dependency
+- **apmw extraction handoff**: [202609021309-extract-apmw-core-add-features-publish.md](https://github.com/levonk/apmw/blob/main/.agents/handoffs/todo/202609021309-extract-apmw-core-add-features-publish.md) — extracts apmw's detection engine into a reusable crate
+- **apmw detection comparison**: [project-detection-comparison.md](https://github.com/levonk/apmw/blob/main/internal-docs/research/202609021315-project-detection-comparison.md) — why apmw-core was chosen over crates.io alternatives
