@@ -45,7 +45,14 @@ impl MarkdownFrontmatterRuleSet {
 
             if let Some(colon_pos) = line.find(':') {
                 let key = line[..colon_pos].trim();
-                let value = Self::strip_quotes(line[colon_pos + 1..].trim());
+                let raw_value = line[colon_pos + 1..].trim();
+                if has_unquoted_colon_space(raw_value) {
+                    errors.push(format!(
+                        "Unquoted colon-space in frontmatter field '{}': \"{}\" — YAML interprets this as a nested mapping; quote the value, e.g. {}: \"{}\"",
+                        key, raw_value, key, raw_value
+                    ));
+                }
+                let value = Self::strip_quotes(raw_value);
 
                 match key {
                     "title" => {
@@ -313,9 +320,21 @@ fn is_excluded_path(rel: &str) -> bool {
     })
 }
 
+/// Detect a `: ` (colon-space) sequence in an unquoted YAML scalar value.
+/// Quoted values (starting with `"` or `'`) are safe — YAML treats their
+/// content as a literal string. Returns `true` when the raw value would be
+/// misinterpreted as a nested mapping by a real YAML parser.
+fn has_unquoted_colon_space(value: &str) -> bool {
+    if value.starts_with('"') || value.starts_with('\'') {
+        return false;
+    }
+    value.contains(": ")
+}
+
 fn frontmatter_severity_for(rule: &str) -> &'static str {
     match rule {
         "md-frontmatter-closed" => "error",
+        "md-frontmatter-unquoted-colon" => "error",
         "adr-id-required"
         | "adr-id-format"
         | "adr-status-required"
@@ -331,6 +350,8 @@ fn frontmatter_rule_for(msg: &str, is_adr: bool) -> Option<&'static str> {
         Some("md-frontmatter-present")
     } else if msg.contains("missing closing") {
         Some("md-frontmatter-closed")
+    } else if msg.contains("Unquoted colon-space in frontmatter field") {
+        Some("md-frontmatter-unquoted-colon")
     } else if msg.contains("Missing required field: title") || msg.contains("title field is empty")
     {
         Some("md-frontmatter-title")
@@ -512,5 +533,116 @@ version: "1.0.0"
         let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
         assert!(issues.is_empty());
         Ok(())
+    }
+
+    #[test]
+    fn scan_flags_unquoted_colon_in_any_field() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(
+            dir.path().join("test.md"),
+            "---\ntitle: For docs: create stuff\nsynopsis: \"A doc\"\ntags: [\"x\"]\n---\n# Body\n",
+        )?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(issues.iter().any(|i| {
+            i.rule == "md-frontmatter-unquoted-colon"
+                && i.severity == "error"
+                && i.message.contains("title")
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn scan_flags_unquoted_colon_in_synopsis() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(
+            dir.path().join("test.md"),
+            "---\ntitle: \"Doc\"\nsynopsis: For docs: write stuff\ntags: [\"x\"]\n---\n# Body\n",
+        )?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(issues.iter().any(|i| {
+            i.rule == "md-frontmatter-unquoted-colon"
+                && i.severity == "error"
+                && i.message.contains("synopsis")
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn scan_quoted_value_with_colon_passes() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(
+            dir.path().join("test.md"),
+            "---\ntitle: \"For docs: create stuff\"\nsynopsis: \"A doc\"\ntags: [\"x\"]\n---\n# Body\n",
+        )?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(!issues
+            .iter()
+            .any(|i| i.rule == "md-frontmatter-unquoted-colon"));
+        Ok(())
+    }
+
+    #[test]
+    fn scan_single_quoted_value_with_colon_passes() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(
+            dir.path().join("test.md"),
+            "---\ntitle: 'For docs: create stuff'\nsynopsis: \"A doc\"\ntags: [\"x\"]\n---\n# Body\n",
+        )?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(!issues
+            .iter()
+            .any(|i| i.rule == "md-frontmatter-unquoted-colon"));
+        Ok(())
+    }
+
+    #[test]
+    fn scan_value_without_colon_passes() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(
+            dir.path().join("test.md"),
+            "---\ntitle: No colon here\nsynopsis: \"A doc\"\ntags: [\"x\"]\n---\n# Body\n",
+        )?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(!issues
+            .iter()
+            .any(|i| i.rule == "md-frontmatter-unquoted-colon"));
+        Ok(())
+    }
+
+    #[test]
+    fn scan_colon_without_space_passes() -> anyhow::Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(
+            dir.path().join("test.md"),
+            "---\ntitle: foo:bar\nsynopsis: \"A doc\"\ntags: [\"x\"]\n---\n# Body\n",
+        )?;
+        let issues = MarkdownFrontmatterScanner::new().scan(&dir.path().to_string_lossy())?;
+        assert!(!issues
+            .iter()
+            .any(|i| i.rule == "md-frontmatter-unquoted-colon"));
+        Ok(())
+    }
+
+    #[test]
+    fn validate_frontmatter_flags_unquoted_colon_directly() {
+        let content =
+            "---\ntitle: For docs: create stuff\nsynopsis: \"A doc\"\ntags: [\"x\"]\n---\n# Body";
+        let result =
+            MarkdownFrontmatterRuleSet::validate_frontmatter(content, Path::new("test.md"));
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors
+            .iter()
+            .any(|e| e.contains("Unquoted colon-space in frontmatter field 'title'")));
+    }
+
+    #[test]
+    fn has_unquoted_colon_space_detects_and_ignores() {
+        assert!(has_unquoted_colon_space("For docs: create"));
+        assert!(!has_unquoted_colon_space("\"For docs: create\""));
+        assert!(!has_unquoted_colon_space("'For docs: create'"));
+        assert!(!has_unquoted_colon_space("foo:bar"));
+        assert!(!has_unquoted_colon_space(""));
+        assert!(!has_unquoted_colon_space("no colon"));
     }
 }

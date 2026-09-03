@@ -62,6 +62,56 @@ run cargo clippy --workspace --all-targets
 # Stage 3 — workspace tests (fast & full)
 run cargo test --workspace
 
+# Stage 3b — frontmatter unquoted-colon check on staged .md files (pre-commit)
+# Scans staged markdown files for unquoted colon-space sequences in YAML
+# frontmatter values — the same bug class as the Rust scanners
+# (skill-frontmatter-unquoted-colon / md-frontmatter-unquoted-colon).
+# Only runs when there are staged .md files with frontmatter.
+if command -v git >/dev/null 2>&1; then
+    frontmatter_failures=0
+    staged_md_files=""
+    while IFS= read -r line; do
+        case "$line" in
+            node_modules/*|target/*) continue ;;
+        esac
+        if [[ -n "$line" ]]; then
+            staged_md_files="${staged_md_files}${line}
+"
+        fi
+    done < <(git diff --cached --name-only -- '*.md')
+    if [[ -n "$staged_md_files" ]]; then
+        while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            [[ -f "$f" ]] || continue
+            head -c 3 -- "$f" 2>/dev/null | grep -q '^---$' || continue
+            awk '
+                NR == 1 && $0 == "---" { in_fm = 1; next }
+                in_fm && $0 == "---" { exit }
+                in_fm {
+                    if ($0 ~ /^[[:space:]]/) next
+                    idx = index($0, ":")
+                    if (idx == 0) next
+                    key = substr($0, 1, idx - 1)
+                    val = substr($0, idx + 1)
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+                    if (val == "") next
+                    if (substr(val, 1, 1) == "\"" || substr(val, 1, 1) == "'\''") next
+                    if (index(val, ": ") > 0) {
+                        printf "  %s: unquoted colon-space in field \"%s\": %s\n", FILENAME, key, val
+                        found = 1
+                    }
+                }
+                END { exit (found ? 1 : 0) }
+            ' "$f" || frontmatter_failures=$((frontmatter_failures + 1))
+        done <<< "$staged_md_files"
+    fi
+    if [[ "$frontmatter_failures" -gt 0 ]]; then
+        echo "✗ frontmatter unquoted-colon check failed on ${frontmatter_failures} file(s)"
+        echo "  Quote the value, e.g. description: \"For skills: create...\""
+        exit 1
+    fi
+fi
+
 if [[ "${MODE}" == "full" ]]; then
     # Stage 4 — doc tests
     run cargo test --workspace --doc
