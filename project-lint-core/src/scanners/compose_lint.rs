@@ -6,7 +6,7 @@
 //! and (in ops mode) watchtower/wud update labels.
 
 use crate::scanners::ScannerIssue;
-use crate::utils::{build_exclusions, is_excluded_rel, walk_project, Result};
+use crate::utils::{build_exclusions, detect_yaml_secrets, is_excluded_rel, walk_project, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -127,10 +127,20 @@ impl ComposeLintScanner {
                 )]
             }
         };
-        let Some(services) = parsed.services else {
-            return Vec::new();
-        };
         let mut issues = Vec::new();
+        for (line, msg) in detect_yaml_secrets(&content) {
+            issues
+                .push(ScannerIssue::new("yaml-hardcoded-secret", "error", rel, msg).at_line(line));
+        }
+        let Some(services) = parsed.services else {
+            issues.push(ScannerIssue::new(
+                "compose-missing-services",
+                "warning",
+                rel,
+                "compose file missing top-level 'services:' key",
+            ));
+            return issues;
+        };
         for (service_name, service) in services {
             issues.extend(self.check_service(&service_name, &service, rel));
         }
@@ -777,11 +787,41 @@ mod tests {
     }
 
     #[test]
-    fn empty_compose_no_issues() -> Result<()> {
+    fn empty_compose_flags_missing_services() -> Result<()> {
         let dir = TempDir::new()?;
         write_compose(dir.path(), "");
         let scanner = ComposeLintScanner::new();
-        assert!(scanner.scan(&dir.path().to_string_lossy())?.is_empty());
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "compose-missing-services" && i.severity == "warning"));
+        Ok(())
+    }
+
+    #[test]
+    fn missing_services_key_flags_warning() -> Result<()> {
+        let dir = TempDir::new()?;
+        write_compose(dir.path(), "version: '3'\nvolumes:\n  data:\n");
+        let scanner = ComposeLintScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "compose-missing-services" && i.severity == "warning"));
+        Ok(())
+    }
+
+    #[test]
+    fn flags_hardcoded_secret_in_compose() -> Result<()> {
+        let dir = TempDir::new()?;
+        write_compose(
+            dir.path(),
+            "services:\n  web:\n    image: nginx:1.25@sha256:abc\n    environment:\n      API_KEY: abc123\n",
+        );
+        let scanner = ComposeLintScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "yaml-hardcoded-secret" && i.severity == "error"));
         Ok(())
     }
 

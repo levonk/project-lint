@@ -3,6 +3,56 @@ use std::path::Path;
 use thiserror::Error;
 use walkdir::{DirEntry, WalkDir};
 
+/// Scan YAML `content` for hardcoded secret-like values assigned to keys whose
+/// names contain `password`, `token`, `api_key`, or `secret`. Returns a list of
+/// `(line_number, message)` tuples (1-based line numbers) for each hit.
+///
+/// This is a generic, line-oriented heuristic — it intentionally avoids pulling
+/// in a full YAML parser so it can be reused by every YAML scanner regardless
+/// of their typed `serde_yaml` structures. Values that reference environment
+/// variables (`${...}`) or are empty are ignored.
+pub fn detect_yaml_secrets(content: &str) -> Vec<(usize, String)> {
+    let mut hits = Vec::new();
+    for (i, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('-') {
+            continue;
+        }
+        let Some(colon) = trimmed.find(':') else {
+            continue;
+        };
+        let key = trimmed[..colon].trim().trim_matches('"').trim_matches('\'');
+        let lower = key.to_lowercase();
+        let looks_secret = lower.contains("password")
+            || lower.contains("token")
+            || lower.contains("api_key")
+            || lower.contains("apikey")
+            || lower.contains("secret");
+        if !looks_secret {
+            continue;
+        }
+        let value = trimmed[colon + 1..].trim();
+        if value.is_empty() || value == "|" || value == ">" {
+            continue;
+        }
+        if value.contains("${") || value.contains("{{") || value.contains("<<") {
+            continue;
+        }
+        let cleaned = value.trim_matches('"').trim_matches('\'');
+        if cleaned.is_empty() {
+            continue;
+        }
+        hits.push((
+            i + 1,
+            format!(
+                "hardcoded secret-like value for '{}' detected; use an env reference",
+                key
+            ),
+        ));
+    }
+    hits
+}
+
 pub type Result<T> = AnyhowResult<T>;
 
 #[derive(Error, Debug)]
@@ -456,5 +506,35 @@ mod tests {
 
         assert!(names.iter().any(|p| p == "a/shallow.txt"));
         assert!(!names.iter().any(|p| p.contains("deep.txt")));
+    }
+
+    #[test]
+    fn detect_yaml_secrets_flags_password_and_token() {
+        let content = "name: app\ndb_password: hunter2\ntoken: abc123\n";
+        let hits = detect_yaml_secrets(content);
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].0, 2);
+        assert_eq!(hits[1].0, 3);
+    }
+
+    #[test]
+    fn detect_yaml_secrets_ignores_env_refs() {
+        let content = "db_password: ${DB_PASSWORD}\ntoken: {{ TOKEN }}\nsecret: <<\n";
+        let hits = detect_yaml_secrets(content);
+        assert!(hits.is_empty(), "env refs should be ignored: {:?}", hits);
+    }
+
+    #[test]
+    fn detect_yaml_secrets_ignores_empty_and_comments() {
+        let content = "# password: not-a-secret\nempty_password:\napi_key: |\n";
+        let hits = detect_yaml_secrets(content);
+        assert!(hits.is_empty(), "empty/comment lines ignored: {:?}", hits);
+    }
+
+    #[test]
+    fn detect_yaml_secrets_ignores_list_items() {
+        let content = "- password\n- token: value\n";
+        let hits = detect_yaml_secrets(content);
+        assert!(hits.is_empty(), "list items ignored: {:?}", hits);
     }
 }

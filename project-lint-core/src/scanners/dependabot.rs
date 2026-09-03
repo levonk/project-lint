@@ -3,7 +3,7 @@
 //! github-actions ecosystem presence when workflows exist.
 
 use crate::scanners::ScannerIssue;
-use crate::utils::Result;
+use crate::utils::{detect_yaml_secrets, Result};
 use serde::Deserialize;
 use std::path::Path;
 use tracing::debug;
@@ -66,6 +66,31 @@ impl DependabotScanner {
             }
         };
 
+        for (line, msg) in detect_yaml_secrets(&content) {
+            issues
+                .push(ScannerIssue::new("yaml-hardcoded-secret", "error", &rel, msg).at_line(line));
+        }
+
+        match config.version {
+            Some(v) if v != 2 => {
+                issues.push(ScannerIssue::new(
+                    "dependabot-version-required",
+                    "warning",
+                    &rel,
+                    format!("dependabot.yml 'version:' must be 2, got {}", v),
+                ));
+            }
+            None => {
+                issues.push(ScannerIssue::new(
+                    "dependabot-version-required",
+                    "warning",
+                    &rel,
+                    "dependabot.yml missing 'version: 2' field",
+                ));
+            }
+            _ => {}
+        }
+
         let entries = config.updates.unwrap_or_default();
         if entries.is_empty() {
             if self.check_ecosystem_coverage {
@@ -101,6 +126,19 @@ impl DependabotScanner {
                     &rel,
                     format!("entry for '{}' missing schedule.interval", ecosystem),
                 ));
+            } else if let Some(ref schedule) = entry.schedule {
+                let valid = matches!(schedule.interval.as_str(), "daily" | "weekly" | "monthly");
+                if !valid {
+                    issues.push(ScannerIssue::new(
+                        "dependabot-invalid-interval",
+                        "error",
+                        &rel,
+                        format!(
+                            "entry for '{}' has invalid schedule.interval '{}'; must be daily, weekly, or monthly",
+                            ecosystem, schedule.interval
+                        ),
+                    ));
+                }
             }
 
             if self.require_group_config && entry.groups.is_none() {
@@ -146,6 +184,8 @@ impl Default for DependabotScanner {
 
 #[derive(Debug, Deserialize)]
 struct DependabotFile {
+    #[serde(default)]
+    version: Option<u64>,
     #[serde(default, rename = "updates")]
     updates: Option<Vec<DependabotEntry>>,
 }
@@ -289,6 +329,66 @@ mod tests {
         let scanner = DependabotScanner::new();
         let issues = scanner.scan(&dir.path().to_string_lossy())?;
         assert!(issues.iter().any(|i| i.rule == "dependabot-parse-error"));
+        Ok(())
+    }
+
+    #[test]
+    fn flags_missing_version_field() -> Result<()> {
+        let dir = TempDir::new()?;
+        write_dependabot(
+            &dir.path(),
+            "updates:\n- package-ecosystem: cargo\n  schedule:\n    interval: weekly\n  assignees:\n    - levonk\n",
+        );
+        let scanner = DependabotScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "dependabot-version-required" && i.severity == "warning"));
+        Ok(())
+    }
+
+    #[test]
+    fn flags_wrong_version_value() -> Result<()> {
+        let dir = TempDir::new()?;
+        write_dependabot(
+            &dir.path(),
+            "version: 1\nupdates:\n- package-ecosystem: cargo\n  schedule:\n    interval: weekly\n  assignees:\n    - levonk\n",
+        );
+        let scanner = DependabotScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "dependabot-version-required" && i.severity == "warning"));
+        Ok(())
+    }
+
+    #[test]
+    fn flags_invalid_interval() -> Result<()> {
+        let dir = TempDir::new()?;
+        write_dependabot(
+            &dir.path(),
+            "version: 2\nupdates:\n- package-ecosystem: cargo\n  schedule:\n    interval: hourly\n  assignees:\n    - levonk\n",
+        );
+        let scanner = DependabotScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "dependabot-invalid-interval" && i.severity == "error"));
+        Ok(())
+    }
+
+    #[test]
+    fn flags_hardcoded_secret_in_dependabot() -> Result<()> {
+        let dir = TempDir::new()?;
+        write_dependabot(
+            &dir.path(),
+            "version: 2\nupdates:\n- package-ecosystem: cargo\n  schedule:\n    interval: weekly\n  assignees:\n    - levonk\napi_token: abc123\n",
+        );
+        let scanner = DependabotScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "yaml-hardcoded-secret" && i.severity == "error"));
         Ok(())
     }
 }
