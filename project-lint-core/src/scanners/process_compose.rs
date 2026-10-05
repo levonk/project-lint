@@ -3,7 +3,7 @@
 //! and devbox usage.
 
 use crate::scanners::ScannerIssue;
-use crate::utils::{build_exclusions, is_excluded_rel, walk_project, Result};
+use crate::utils::{build_exclusions, detect_yaml_secrets, is_excluded_rel, walk_project, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -85,7 +85,23 @@ impl ProcessComposeScanner {
             }
         };
 
-        let processes = file.processes.unwrap_or_default();
+        for (line, msg) in detect_yaml_secrets(&content) {
+            issues
+                .push(ScannerIssue::new("yaml-hardcoded-secret", "error", rel, msg).at_line(line));
+        }
+
+        let processes = match file.processes {
+            Some(p) => p,
+            None => {
+                issues.push(ScannerIssue::new(
+                    "process-compose-missing-processes",
+                    "warning",
+                    rel,
+                    "process-compose file missing top-level 'processes:' key",
+                ));
+                return issues;
+            }
+        };
         for (name, proc) in &processes {
             if proc.command.is_none() || proc.command.as_ref().map(|c| c.is_empty()).unwrap_or(true)
             {
@@ -293,6 +309,33 @@ mod tests {
         assert!(issues
             .iter()
             .any(|i| i.rule == "process-compose-parse-error"));
+        Ok(())
+    }
+
+    #[test]
+    fn flags_missing_processes_key() -> Result<()> {
+        let dir = TempDir::new()?;
+        write_process_compose(&dir.path(), "version: '0.5'\n");
+        let scanner = ProcessComposeScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| { i.rule == "process-compose-missing-processes" && i.severity == "warning" }));
+        Ok(())
+    }
+
+    #[test]
+    fn flags_hardcoded_secret_in_process_compose() -> Result<()> {
+        let dir = TempDir::new()?;
+        write_process_compose(
+            &dir.path(),
+            "version: '0.5'\nprocesses:\n  web:\n    command: devbox run -- python -m http.server\n    health_check:\n      test: echo ok\n    restart_policy:\n      max_restarts: 3\n    env:\n      API_TOKEN: abc123\n",
+        );
+        let scanner = ProcessComposeScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "yaml-hardcoded-secret" && i.severity == "error"));
         Ok(())
     }
 }

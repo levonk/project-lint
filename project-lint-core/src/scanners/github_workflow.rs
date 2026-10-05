@@ -4,7 +4,7 @@
 //! valid `runs-on`, concurrency, timeout, and devbox usage.
 
 use crate::scanners::ScannerIssue;
-use crate::utils::{build_exclusions, is_excluded_rel, walk_project, Result};
+use crate::utils::{build_exclusions, detect_yaml_secrets, is_excluded_rel, walk_project, Result};
 use serde::Deserialize;
 use std::path::Path;
 use tracing::debug;
@@ -108,6 +108,20 @@ impl GithubWorkflowScanner {
                 return issues;
             }
         };
+
+        for (line, msg) in detect_yaml_secrets(&content) {
+            issues
+                .push(ScannerIssue::new("yaml-hardcoded-secret", "error", rel, msg).at_line(line));
+        }
+
+        if workflow.jobs.is_none() {
+            issues.push(ScannerIssue::new(
+                "workflow-missing-jobs",
+                "error",
+                rel,
+                "workflow missing top-level 'jobs:' mapping",
+            ));
+        }
 
         if self.forbid_pull_request_target && workflow.has_pull_request_target() {
             issues.push(ScannerIssue::new(
@@ -511,6 +525,38 @@ mod tests {
         let scanner = GithubWorkflowScanner::new();
         let issues = scanner.scan(&dir.path().to_string_lossy())?;
         assert!(issues.iter().any(|i| i.rule == "workflow-parse-error"));
+        Ok(())
+    }
+
+    #[test]
+    fn flags_missing_jobs_key() -> Result<()> {
+        let dir = TempDir::new()?;
+        write_workflow(
+            &dir.path(),
+            "ci.yml",
+            "name: CI\non: push\npermissions:\n  contents: read\ntimeout-minutes: 30\n",
+        );
+        let scanner = GithubWorkflowScanner::new();
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "workflow-missing-jobs" && i.severity == "error"));
+        Ok(())
+    }
+
+    #[test]
+    fn flags_hardcoded_secret_in_workflow() -> Result<()> {
+        let dir = TempDir::new()?;
+        write_workflow(
+            &dir.path(),
+            "ci.yml",
+            "name: CI\non: push\npermissions:\n  contents: read\ntimeout-minutes: 30\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: devbox run -- just build\n    env:\n      API_KEY: abc123\n",
+        );
+        let scanner = GithubWorkflowScanner::with_config(true, true, true, false, true);
+        let issues = scanner.scan(&dir.path().to_string_lossy())?;
+        assert!(issues
+            .iter()
+            .any(|i| i.rule == "yaml-hardcoded-secret" && i.severity == "error"));
         Ok(())
     }
 }
