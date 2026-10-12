@@ -114,10 +114,10 @@ pub fn path_exists_glob(project_root: &std::path::Path, spec: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Default directories excluded from all WalkDir-based scanners. These cover
-/// build artifacts, dependency directories, and VCS internals that should
-/// never be linted. `vendor` is intentionally absent — it is configurable via
-/// `ExclusionConfig.allow_vendor` because some projects have first-party
-/// `vendor/` directories.
+/// build artifacts, dependency directories, tool caches, virtual
+/// environments, and VCS internals that should never be linted. `vendor` is
+/// intentionally absent — it is configurable via `ExclusionConfig.allow_vendor`
+/// because some projects have first-party `vendor/` directories.
 pub const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     "node_modules",
     "target",
@@ -131,6 +131,15 @@ pub const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     ".devbox/gen",
     ".cache",
     "coverage",
+    ".venv",
+    "venv",
+    ".direnv",
+    ".tox",
+    ".nox",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
 ];
 
 /// Assemble the full exclusion list from the defaults, user-provided extra
@@ -227,7 +236,7 @@ mod tests {
                 dir
             );
         }
-        // Explicitly assert each of the 12 known entries so a future
+        // Explicitly assert each of the 21 known entries so a future
         // accidental removal is caught by name.
         assert!(DEFAULT_EXCLUDED_DIRS.contains(&"node_modules"));
         assert!(DEFAULT_EXCLUDED_DIRS.contains(&"target"));
@@ -241,6 +250,15 @@ mod tests {
         assert!(DEFAULT_EXCLUDED_DIRS.contains(&".devbox/gen"));
         assert!(DEFAULT_EXCLUDED_DIRS.contains(&".cache"));
         assert!(DEFAULT_EXCLUDED_DIRS.contains(&"coverage"));
+        assert!(DEFAULT_EXCLUDED_DIRS.contains(&".venv"));
+        assert!(DEFAULT_EXCLUDED_DIRS.contains(&"venv"));
+        assert!(DEFAULT_EXCLUDED_DIRS.contains(&".direnv"));
+        assert!(DEFAULT_EXCLUDED_DIRS.contains(&".tox"));
+        assert!(DEFAULT_EXCLUDED_DIRS.contains(&".nox"));
+        assert!(DEFAULT_EXCLUDED_DIRS.contains(&"__pycache__"));
+        assert!(DEFAULT_EXCLUDED_DIRS.contains(&".pytest_cache"));
+        assert!(DEFAULT_EXCLUDED_DIRS.contains(&".mypy_cache"));
+        assert!(DEFAULT_EXCLUDED_DIRS.contains(&".ruff_cache"));
     }
 
     #[test]

@@ -123,6 +123,45 @@ pub struct ScannerConfig {
     pub prisma_schema: Option<PrismaSchemaConfig>,
     #[serde(default)]
     pub yamllint_config: Option<YamllintConfigScannerConfig>,
+    #[serde(default)]
+    pub tilde_path: Option<TildePathScannerConfig>,
+}
+
+/// `[scanner_config.tilde_path]` — configuration for the tilde-in-PATH
+/// scanner that flags `~` used in PATH (and `*PATH`-style search-path)
+/// assignments where it will never expand: quoted or escaped tildes
+/// (`export PATH="$PATH:~/bin"`), literal file formats with no tilde
+/// expansion (Dockerfile `ENV`, `.env`, YAML `PATH:` keys, justfile/make
+/// exports), and fragile unquoted tildes that only expand in assignment
+/// position.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TildePathScannerConfig {
+    /// When true, flag quoted or backslash-escaped `~` in PATH assignments
+    /// (never expands). Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_quoted_tilde: bool,
+
+    /// When true, flag `~` in PATH values in file formats with no tilde
+    /// expansion (Dockerfile `ENV`, `.env`, YAML `PATH:` keys, justfile /
+    /// Makefile exports). Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_literal_tilde: bool,
+
+    /// When true, flag unquoted `~` in shell PATH assignments (works via
+    /// bash/zsh `:`/`=` expansion rules but is fragile). Info-level.
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub check_fragile_tilde: bool,
+}
+
+impl Default for TildePathScannerConfig {
+    fn default() -> Self {
+        Self {
+            check_quoted_tilde: true,
+            check_literal_tilde: true,
+            check_fragile_tilde: true,
+        }
+    }
 }
 
 /// `[scanner_config.python_config]` — configuration for the Python config

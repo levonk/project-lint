@@ -1,6 +1,8 @@
 use colored::Colorize;
 use glob::Pattern;
-use project_lint_core::utils::{build_exclusions, matches_pattern, path_exists_glob, Result};
+use project_lint_core::utils::{
+    build_exclusions, is_excluded_entry, matches_pattern, path_exists_glob, Result,
+};
 use std::path::Path;
 use tracing::{debug, info, warn};
 use walkdir::WalkDir;
@@ -35,8 +37,9 @@ use project_lint_core::scanners::{
     runtime_guards::RuntimeGuardsScanner, rust_conventions::RustConventionsScanner,
     shell_script::ShellScriptScanner, skill_markdown::SkillMarkdownScanner,
     sql_migration::SqlMigrationScanner, submodule_integrity::SubmoduleIntegrityScanner,
-    terraform_lint::TerraformLintScanner, typescript_monorepo::TypeScriptMonorepoScanner,
-    vault_security::VaultSecurityScanner, yamllint_config::YamllintConfigScanner, ScannerIssue,
+    terraform_lint::TerraformLintScanner, tilde_path::TildePathScanner,
+    typescript_monorepo::TypeScriptMonorepoScanner, vault_security::VaultSecurityScanner,
+    yamllint_config::YamllintConfigScanner, ScannerIssue,
 };
 
 pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result<()> {
@@ -86,11 +89,19 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
         debug!("No specific profiles activated");
     }
 
+    // Centralized exclusion list shared by all file-tree traversals.
+    let excluded = build_exclusions_from_config(&config);
+
     // Perform file naming analysis
     if config.is_check_enabled("file_naming") {
         debug!("Performing file naming analysis");
-        let excluded = build_exclusions_from_config(&config);
-        perform_file_naming_analysis(project_path, &mut issues, apply_fixes, dry_run, excluded)?;
+        perform_file_naming_analysis(
+            project_path,
+            &mut issues,
+            apply_fixes,
+            dry_run,
+            excluded.clone(),
+        )?;
     }
 
     // Initialize AST analyzer
@@ -100,26 +111,26 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
     debug!("Processing {} modular rules", config.modular_rules.len());
     for rule in &config.modular_rules {
         if rule.enabled {
-            process_modular_rule(project_path, rule, &mut issues, &config)?;
+            process_modular_rule(project_path, rule, &mut issues, &config, &excluded)?;
         }
     }
 
     // Perform AST-based analysis
     if config.is_check_enabled("ast_analysis") {
         debug!("Performing AST-based analysis");
-        perform_ast_analysis(project_path, &mut ast_analyzer, &mut issues)?;
+        perform_ast_analysis(project_path, &mut ast_analyzer, &mut issues, &excluded)?;
     }
 
     // Perform security scanning
     if config.is_check_enabled("security_analysis") {
         debug!("Performing security analysis");
-        perform_security_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
+        perform_security_analysis(project_path, &mut issues, apply_fixes, dry_run, &excluded)?;
     }
 
     // Perform TypeScript linting
     if config.is_check_enabled("typescript_analysis") {
         debug!("Performing TypeScript analysis");
-        perform_typescript_analysis(project_path, &mut issues, apply_fixes, dry_run)?;
+        perform_typescript_analysis(project_path, &mut issues, apply_fixes, dry_run, &excluded)?;
     }
 
     // Perform dependency version checking
@@ -872,6 +883,21 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
         perform_scanner_issues("Gradle", &scanner.scan(project_path)?, &mut issues);
     }
 
+    if config.is_check_enabled("tilde_path") {
+        debug!("Performing tilde-in-PATH analysis");
+        let excluded = build_exclusions_from_config(&config);
+        let scanner = match &config.scanner_config.tilde_path {
+            Some(c) => TildePathScanner::with_exclusions(
+                c.check_quoted_tilde,
+                c.check_literal_tilde,
+                c.check_fragile_tilde,
+                excluded,
+            ),
+            None => TildePathScanner::with_exclusions(true, true, true, excluded),
+        };
+        perform_scanner_issues("TildePath", &scanner.scan(project_path)?, &mut issues);
+    }
+
     // Legacy checks (for backward compatibility)
     if !config
         .modular_rules
@@ -888,7 +914,7 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
         .any(|r| r.name == "file-organization")
         && config.is_check_enabled("file_location")
     {
-        check_legacy_file_structure(project_path, &config, &mut issues)?;
+        check_legacy_file_structure(project_path, &config, &mut issues, &excluded)?;
     }
 
     if !config
@@ -897,7 +923,7 @@ pub async fn run(project_path: &str, apply_fixes: bool, dry_run: bool) -> Result
         .any(|r| r.name == "script-location")
         && config.is_check_enabled("directory_structure")
     {
-        check_legacy_directory_structure(project_path, &config, &mut issues)?;
+        check_legacy_directory_structure(project_path, &config, &mut issues, &excluded)?;
     }
 
     // Report results
@@ -1072,9 +1098,11 @@ fn perform_ast_analysis(
     project_path: &str,
     ast_analyzer: &mut ASTAnalyzer,
     issues: &mut Vec<String>,
+    excluded: &[String],
 ) -> Result<()> {
     for entry in WalkDir::new(project_path)
         .into_iter()
+        .filter_entry(|e| !is_excluded_entry(e, Path::new(project_path), excluded))
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
@@ -1127,6 +1155,7 @@ fn process_modular_rule(
     rule: &ModularRule,
     issues: &mut Vec<String>,
     config: &Config,
+    excluded: &[String],
 ) -> Result<()> {
     debug!("Processing rule: {}", rule.name);
 
@@ -1160,14 +1189,14 @@ fn process_modular_rule(
     // File organization rules
     if config.is_check_enabled("file_location") {
         if let Some(file_mappings) = &rule.file_mappings {
-            check_file_organization(project_path, file_mappings, rule, issues)?;
+            check_file_organization(project_path, file_mappings, rule, issues, excluded)?;
         }
     }
 
     // Script location rules
     if config.is_check_enabled("directory_structure") {
         if let Some(script_config) = &rule.scripts {
-            check_script_locations(project_path, script_config, rule, issues)?;
+            check_script_locations(project_path, script_config, rule, issues, excluded)?;
         }
     }
 
@@ -1175,7 +1204,7 @@ fn process_modular_rule(
     if config.is_check_enabled("custom_rules") {
         if let Some(custom_rules) = &rule.rules {
             for custom_rule in custom_rules {
-                check_custom_rule(project_path, custom_rule, issues)?;
+                check_custom_rule(project_path, custom_rule, issues, excluded)?;
             }
         }
     }
@@ -1188,6 +1217,7 @@ fn check_file_organization(
     file_mappings: &std::collections::HashMap<String, String>,
     rule: &ModularRule,
     issues: &mut Vec<String>,
+    excluded: &[String],
 ) -> Result<()> {
     let ignored_patterns = rule
         .ignored_patterns
@@ -1197,6 +1227,7 @@ fn check_file_organization(
 
     for entry in WalkDir::new(project_path)
         .into_iter()
+        .filter_entry(|e| !is_excluded_entry(e, Path::new(project_path), excluded))
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
@@ -1241,9 +1272,11 @@ fn check_script_locations(
     script_config: &project_lint_core::config::ScriptRuleConfig,
     rule: &ModularRule,
     issues: &mut Vec<String>,
+    excluded: &[String],
 ) -> Result<()> {
     for entry in WalkDir::new(project_path)
         .into_iter()
+        .filter_entry(|e| !is_excluded_entry(e, Path::new(project_path), excluded))
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
@@ -1285,6 +1318,7 @@ fn check_custom_rule(
     project_path: &str,
     custom_rule: &project_lint_core::config::CustomRule,
     issues: &mut Vec<String>,
+    excluded: &[String],
 ) -> Result<()> {
     // Project-level activation gate: only evaluate if the marker exists.
     if let Some(enable_spec) = &custom_rule.enabled_if_path_exists {
@@ -1330,6 +1364,7 @@ fn check_custom_rule(
 
     for entry in WalkDir::new(project_path)
         .into_iter()
+        .filter_entry(|e| !is_excluded_entry(e, Path::new(project_path), excluded))
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
@@ -1514,9 +1549,11 @@ fn check_legacy_file_structure(
     project_path: &str,
     config: &Config,
     issues: &mut Vec<String>,
+    excluded: &[String],
 ) -> Result<()> {
     for entry in WalkDir::new(project_path)
         .into_iter()
+        .filter_entry(|e| !is_excluded_entry(e, Path::new(project_path), excluded))
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
@@ -1551,12 +1588,14 @@ fn check_legacy_directory_structure(
     project_path: &str,
     config: &Config,
     issues: &mut Vec<String>,
+    excluded: &[String],
 ) -> Result<()> {
     if config.directories.warn_scripts_location {
         let scripts_dir = &config.directories.scripts_directory;
 
         for entry in WalkDir::new(project_path)
             .into_iter()
+            .filter_entry(|e| !is_excluded_entry(e, Path::new(project_path), excluded))
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
         {
@@ -1595,6 +1634,7 @@ fn perform_security_analysis(
     issues: &mut Vec<String>,
     apply_fixes: bool,
     dry_run: bool,
+    excluded: &[String],
 ) -> Result<()> {
     let scanner = match SecurityScanner::new() {
         Ok(s) => s,
@@ -1610,6 +1650,7 @@ fn perform_security_analysis(
     // Scan all source files
     for entry in WalkDir::new(project_path)
         .into_iter()
+        .filter_entry(|e| !is_excluded_entry(e, Path::new(project_path), excluded))
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
@@ -1697,6 +1738,7 @@ fn perform_typescript_analysis(
     issues: &mut Vec<String>,
     apply_fixes: bool,
     dry_run: bool,
+    excluded: &[String],
 ) -> Result<()> {
     let scanner = match TypeScriptScanner::new() {
         Ok(s) => s,
@@ -1711,6 +1753,7 @@ fn perform_typescript_analysis(
     // Scan TypeScript and JavaScript files
     for entry in WalkDir::new(project_path)
         .into_iter()
+        .filter_entry(|e| !is_excluded_entry(e, Path::new(project_path), excluded))
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {

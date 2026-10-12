@@ -44,6 +44,7 @@ pub mod skill_markdown;
 pub mod sql_migration;
 pub mod submodule_integrity;
 pub mod terraform_lint;
+pub mod tilde_path;
 pub mod typescript;
 pub mod typescript_monorepo;
 pub mod vault_security;
@@ -57,7 +58,8 @@ pub mod yamllint_config;
 /// nx_project, pnpm_workspace, node_modules_integrity, shell_script,
 /// agents_md, path_hygiene, python_config, go_config, gradle_config,
 /// terraform_lint, pulumi_lint, ansible_lint, jinja_template,
-/// sql_migration, protobuf_lint, prisma_schema, binary_validation). Carries enough
+/// sql_migration, protobuf_lint, prisma_schema, binary_validation,
+/// tilde_path). Carries enough
 /// context for the lint command to format a human-readable line and for tests
 /// to assert on severity/file/message.
 #[derive(Debug, Clone, PartialEq, Eq)]
